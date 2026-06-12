@@ -172,6 +172,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         print("✅ [AppDelegate] 最终截图已保存并复制到剪贴板！")
         
+        if action == .none {
+            DispatchQueue.main.async {
+                ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: "截图已复制并保存至历史记录"))
+            }
+        }
+        
         if action != .none {
             let recordId = HistoryManager.shared.records.first?.id
             

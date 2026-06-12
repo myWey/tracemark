@@ -1,5 +1,8 @@
 import Cocoa
 import SwiftUI
+import AppKit
+import CoreImage
+import UniformTypeIdentifiers
 import Translation
 
 public enum PostCaptureAction: String {
@@ -212,7 +215,12 @@ public class OverlayManager {
             
             print("ℹ️ [OverlayManager] 屏幕信息 - frame: \(screenFrame), visibleFrame: \(screen.visibleFrame), backingScaleFactor: \(screen.backingScaleFactor)")
             
-            let rootView = OverlayRootView(capture: capture, onCaptured: { image, cleanImage, annotations, action in
+            let loc = NSEvent.mouseLocation
+            let x = loc.x - screenFrame.minX
+            let y = screenFrame.maxY - loc.y
+            let initialHover = CGPoint(x: x, y: y)
+            
+            let rootView = OverlayRootView(capture: capture, initialHoverPoint: initialHover, onCaptured: { image, cleanImage, annotations, action in
                 print("ℹ️ [OverlayManager] 遮罩层触发 onCaptured，开始执行回调...")
                 onCaptured(image, cleanImage, annotations, screen, action)
                 self.closeAll()
@@ -317,6 +325,13 @@ struct OverlayRootView: View {
     let onCaptured: (CGImage, CGImage?, [AnnotationItem]?, PostCaptureAction) -> Void
     let onCanceled: () -> Void
     
+    init(capture: ScreenCapture, initialHoverPoint: CGPoint, onCaptured: @escaping (CGImage, CGImage?, [AnnotationItem]?, PostCaptureAction) -> Void, onCanceled: @escaping () -> Void) {
+        self.capture = capture
+        self.onCaptured = onCaptured
+        self.onCanceled = onCanceled
+        self._hoverPoint = State(initialValue: initialHoverPoint)
+    }
+    
     @State private var sessionState: CaptureSessionState = .cropping
     
     // 裁剪框状态
@@ -335,7 +350,9 @@ struct OverlayRootView: View {
     @State private var editingTextId: UUID? = nil
     @State private var selectedTool: AnnotationToolType = .rectangle
     @State private var selectedColor: Color = .red
-    @State private var selectedSize: CGFloat = 24.0
+    @State private var selectedFontSize: CGFloat = 16.0
+    @State private var selectedLineWidth: CGFloat = 4.0
+    @State private var selectedBrushSize: CGFloat = 24.0
     @State private var selectedTextStyle: TextStyle = .standard
     
     // 标注选中与调整状态
@@ -348,7 +365,7 @@ struct OverlayRootView: View {
     @State private var undoStack: [[AnnotationItem]] = []
     @State private var redoStack: [[AnnotationItem]] = []
     
-    @State private var hoverPoint: CGPoint = .zero
+    @State private var hoverPoint: CGPoint
     @State private var isHoveringCanvas: Bool = false
     
     private func prepareForWrite() {
@@ -389,6 +406,27 @@ struct OverlayRootView: View {
         )
     }
     
+    func findHitAnnotation(at point: CGPoint) -> (UUID, DragHandle?)? {
+        // 检查是否点中了 NumberedText 的起始点圆圈
+        for item in annotations.reversed() {
+            if item.type == .numberedText {
+                let size = (item.fontSize ?? 16.0) * 1.5
+                let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
+                if circleRect.contains(point) {
+                    return (item.id, .calloutOrigin)
+                }
+            }
+        }
+        
+        // 再检查是否点中了某个标注的包围盒
+        for item in annotations.reversed() {
+            if item.rect.contains(point) {
+                return (item.id, nil)
+            }
+        }
+        return nil
+    }
+    
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
@@ -399,7 +437,7 @@ struct OverlayRootView: View {
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .onTapGesture(perform: handleTextCommit)
                 
-                // 2. 标注层：仅在选区范围内可见或整个屏幕都可见？（整个屏幕更自由，但保存时仅裁剪选区）
+                // 2. 标注层
                 AnnotationCanvasLayer(
                     image: capture.image,
                     displaySize: CGSize(width: geometry.size.width, height: geometry.size.height),
@@ -522,7 +560,9 @@ struct OverlayRootView: View {
                     UnifiedToolbarView(
                         selectedTool: $selectedTool,
                         selectedColor: $selectedColor,
-                        selectedSize: $selectedSize,
+                        selectedFontSize: $selectedFontSize,
+                        selectedLineWidth: $selectedLineWidth,
+                        selectedBrushSize: $selectedBrushSize,
                         selectedTextStyle: $selectedTextStyle,
                         hasUndo: !undoStack.isEmpty,
                         hasRedo: !redoStack.isEmpty,
@@ -534,20 +574,37 @@ struct OverlayRootView: View {
                         onOCR: { exportAndClose(action: .ocr) },
                         onTranslate: { exportAndClose(action: .translate) },
                         onCancel: handleCancel,
-                        onConfirm: { exportAndClose(action: .none) }
+                        onConfirm: { exportAndClose(action: .none) },
+                        onGenerateDragURL: { return generateDragURL() }
                     )
                     .fixedSize()
                     .position(x: tbX, y: tbY)
                 }
                 
-                // 7. PSD-style 圆形画笔光标
+                // 7. 放大镜与取色器 (MagnifierView)
+                if sessionState == .cropping || activeHandle != nil {
+                    MagnifierView(
+                        baseImage: capture.image,
+                        hoverPoint: hoverPoint,
+                        scaleFactor: capture.screen.backingScaleFactor,
+                        onCopyColor: {
+                            onCanceled()
+                        }
+                    )
+                    .position(
+                        x: min(max(hoverPoint.x + 80, 80), geometry.size.width - 80),
+                        y: min(max(hoverPoint.y + 100, 100), geometry.size.height - 100)
+                    )
+                    .allowsHitTesting(false)
+                }
+                
+                // 8. PSD-style 圆形画笔光标
                 if isHoveringCanvas && (selectedTool == .pencil || selectedTool == .highlighter || selectedTool == .blur || selectedTool == .mosaic) {
                     let brushSize: CGFloat = {
-                        let lw = max(1.0, selectedSize / 4.0)
                         if selectedTool == .pencil {
-                            return lw
+                            return selectedLineWidth
                         } else {
-                            return max(20.0, lw * 2.0)
+                            return selectedBrushSize
                         }
                     }()
                     ZStack {
@@ -569,8 +626,14 @@ struct OverlayRootView: View {
         .onChange(of: selectedColor) { newColor in
             updateSelectedAnnotation(color: newColor)
         }
-        .onChange(of: selectedSize) { newSize in
-            updateSelectedAnnotation(size: newSize)
+        .onChange(of: selectedFontSize) { newSize in
+            updateSelectedAnnotation(fontSize: newSize)
+        }
+        .onChange(of: selectedLineWidth) { newSize in
+            updateSelectedAnnotation(lineWidth: newSize)
+        }
+        .onChange(of: selectedBrushSize) { newSize in
+            updateSelectedAnnotation(lineWidth: newSize)
         }
         .onChange(of: selectedTextStyle) { newStyle in
             updateSelectedAnnotation(style: newStyle)
@@ -604,29 +667,66 @@ struct OverlayRootView: View {
         return nil
     }
     
-    private func handleHover(_ point: CGPoint) {
-        if sessionState == .editing {
-            // 1. Check annotation handles if selected
-            if let selectedId = selectedAnnotationId,
-               let index = annotations.firstIndex(where: { $0.id == selectedId }) {
-                let itemRect = annotations[index].rect
-                if let handle = hitTestHandle(point: point, rect: itemRect) {
-                    switch handle {
-                    case .left, .right: NSCursor.resizeLeftRight.set()
-                    case .top, .bottom: NSCursor.resizeUpDown.set()
-                    case .topLeft, .bottomRight: NSCursor.crosshair.set() // Alternatively, implement diagonal cursors later
-                    case .topRight, .bottomLeft: NSCursor.crosshair.set()
-                    }
-                    return
-                } else if itemRect.contains(point) {
-                    NSCursor.openHand.set()
-                    return
+    private func hitTestAnnotation(point: CGPoint) -> (UUID, DragHandle?)? {
+        // 检查是否点中了 NumberedText 的起始点圆圈
+        if let selectedId = selectedAnnotationId,
+           let index = annotations.firstIndex(where: { $0.id == selectedId }) {
+            let item = annotations[index]
+            if item.type == .numberedText {
+                let size = (item.fontSize ?? 16.0) * 1.5
+                let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
+                if circleRect.contains(point) {
+                    return (selectedId, .calloutOrigin)
                 }
             }
-            
-            // 2. Check other annotations for openHand
-            if annotations.reversed().contains(where: { $0.rect.contains(point) }) {
-                NSCursor.openHand.set()
+        }
+        
+        // 先检查是否点中了某个控制柄
+        if let selectedId = selectedAnnotationId,
+           let index = annotations.firstIndex(where: { $0.id == selectedId }) {
+            let itemRect = annotations[index].rect
+            if let handle = hitTestHandle(point: point, rect: itemRect) {
+                return (selectedId, handle)
+            }
+        }
+        
+        // 检查未选中的 NumberedText 的起始点圆圈
+        for item in annotations.reversed() {
+            if item.type == .numberedText {
+                let size = (item.fontSize ?? 16.0) * 1.5
+                let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
+                if circleRect.contains(point) {
+                    return (item.id, .calloutOrigin)
+                }
+            }
+        }
+        
+        // 再检查是否点中了某个标注的包围盒
+        for item in annotations.reversed() {
+            if item.rect.contains(point) {
+                return (item.id, nil)
+            }
+        }
+        
+        return nil
+    }
+    
+    private func handleHover(_ point: CGPoint) {
+        if sessionState == .editing {
+            if let (_, handle) = hitTestAnnotation(point: point) {
+                if handle == .calloutOrigin {
+                    NSCursor.pointingHand.set()
+                } else if handle != nil {
+                    switch handle! {
+                    case .left, .right: NSCursor.resizeLeftRight.set()
+                    case .top, .bottom: NSCursor.resizeUpDown.set()
+                    case .topLeft, .bottomRight: NSCursor.crosshair.set()
+                    case .topRight, .bottomLeft: NSCursor.crosshair.set()
+                    case .calloutOrigin: NSCursor.arrow.set()
+                    }
+                } else {
+                    NSCursor.openHand.set()
+                }
                 return
             }
             
@@ -637,6 +737,7 @@ struct OverlayRootView: View {
                 case .top, .bottom: NSCursor.resizeUpDown.set()
                 case .topLeft, .bottomRight: NSCursor.crosshair.set()
                 case .topRight, .bottomLeft: NSCursor.crosshair.set()
+                case .calloutOrigin: NSCursor.arrow.set()
                 }
                 return
             }
@@ -667,31 +768,12 @@ struct OverlayRootView: View {
             }
             currentPoint = point
         } else {
-            // 1. Check if clicking on selected annotation's handles or body
-            if let selectedId = selectedAnnotationId,
-               let index = annotations.firstIndex(where: { $0.id == selectedId }) {
-                let itemRect = annotations[index].rect
-                if let handle = hitTestHandle(point: point, rect: itemRect) {
-                    prepareForWrite()
-                    annotationActiveHandle = handle
-                    annotationInitialItem = annotations[index]
-                    annotationDragStartPoint = point
-                    return
-                } else if itemRect.contains(point) {
-                    prepareForWrite()
-                    annotationActiveHandle = nil // means moving
-                    annotationInitialItem = annotations[index]
-                    annotationDragStartPoint = point
-                    return
-                }
-            }
-            
-            // 2. Check if clicking on another annotation
-            if let hitAnnotation = annotations.reversed().first(where: { $0.rect.contains(point) }) {
+            // 1. Check if clicking on annotation
+            if let (id, handle) = hitTestAnnotation(point: point) {
                 prepareForWrite()
-                selectedAnnotationId = hitAnnotation.id
-                annotationActiveHandle = nil
-                annotationInitialItem = hitAnnotation
+                selectedAnnotationId = id
+                annotationActiveHandle = handle
+                annotationInitialItem = annotations.first(where: { $0.id == id })
                 annotationDragStartPoint = point
                 return
             }
@@ -730,7 +812,7 @@ struct OverlayRootView: View {
                     lineWidth: 2.0,
                     text: "",
                     fontStyle: selectedTextStyle,
-                    fontSize: selectedSize,
+                    fontSize: selectedFontSize,
                     counterValue: cValue
                 )
                 annotations.append(textItem)
@@ -749,9 +831,9 @@ struct OverlayRootView: View {
                         startPoint: point,
                         endPoint: point, // Fix for counter to appear immediately
                         color: selectedColor,
-                        lineWidth: max(1.0, selectedSize / 4.0),
+                        lineWidth: (selectedTool == .highlighter || selectedTool == .blur || selectedTool == .mosaic) ? selectedBrushSize : selectedLineWidth,
                         fontStyle: selectedTextStyle,
-                        fontSize: selectedSize,
+                        fontSize: selectedFontSize,
                         counterValue: cValue
                     )
                     
@@ -819,12 +901,21 @@ struct OverlayRootView: View {
                     case .bottomRight:
                         newRect.size.width = max(5, initRect.size.width + dx)
                         newRect.size.height = max(5, initRect.size.height + dy)
+                    case .calloutOrigin:
+                        updatedItem.move(by: CGSize(width: dx, height: dy))
+                        newRect = updatedItem.rect
                     }
                     
                     updatedItem.resize(to: newRect, from: initRect)
                 } else {
                     // Move
-                    updatedItem.move(by: CGSize(width: dx, height: dy))
+                    if updatedItem.type == .numberedText {
+                        let oldOffset = updatedItem.calloutOffset ?? CGSize(width: 16.0, height: -45.0)
+                        updatedItem.calloutOffset = CGSize(width: oldOffset.width + dx, height: oldOffset.height + dy)
+                        updatedItem.endPoint = CGPoint(x: updatedItem.endPoint.x + dx, y: updatedItem.endPoint.y + dy)
+                    } else {
+                        updatedItem.move(by: CGSize(width: dx, height: dy))
+                    }
                 }
                 
                 annotations[index] = updatedItem
@@ -834,6 +925,11 @@ struct OverlayRootView: View {
             if let handle = activeHandle, let initRect = initialRectBeforeDrag, let start = dragStartPoint {
                 let dx = point.x - start.x
                 let dy = point.y - start.y
+                
+                if handle == .calloutOrigin {
+                    // This is handled in the selectedId branch above usually, but just in case
+                    return
+                }
                 
                 var newRect = initRect
                 
@@ -864,6 +960,8 @@ struct OverlayRootView: View {
                 case .bottomRight:
                     newRect.size.width = max(5, initRect.size.width + dx)
                     newRect.size.height = max(5, initRect.size.height + dy)
+                case .calloutOrigin:
+                    break
                 }
                 finalRect = newRect
                 return
@@ -962,7 +1060,7 @@ struct OverlayRootView: View {
     }
     
     // MARK: - Live Style Bindings
-    private func updateSelectedAnnotation(color: Color? = nil, size: CGFloat? = nil, style: TextStyle? = nil) {
+    private func updateSelectedAnnotation(color: Color? = nil, fontSize: CGFloat? = nil, lineWidth: CGFloat? = nil, style: TextStyle? = nil) {
         guard let selectedId = selectedAnnotationId,
               let index = annotations.firstIndex(where: { $0.id == selectedId }) else { return }
         
@@ -974,18 +1072,17 @@ struct OverlayRootView: View {
             changed = true
         }
         
-        if let newSize = size {
-            if item.type == .text || item.type == .numberedText || item.type == .counter {
-                if item.fontSize != newSize {
-                    item.fontSize = newSize
-                    changed = true
-                }
-            } else {
-                let mappedWidth = max(1.0, newSize / 4.0)
-                if item.lineWidth != mappedWidth {
-                    item.lineWidth = mappedWidth
-                    changed = true
-                }
+        if let newSize = fontSize {
+            if item.fontSize != newSize {
+                item.fontSize = newSize
+                changed = true
+            }
+        }
+        
+        if let newWidth = lineWidth {
+            if item.lineWidth != newWidth {
+                item.lineWidth = newWidth
+                changed = true
             }
         }
         
@@ -1007,9 +1104,11 @@ struct OverlayRootView: View {
         
         selectedColor = item.color
         if item.type == .text || item.type == .numberedText || item.type == .counter {
-            selectedSize = item.fontSize ?? 24.0
+            selectedFontSize = item.fontSize ?? 16.0
+        } else if item.type == .highlighter || item.type == .blur || item.type == .mosaic {
+            selectedBrushSize = item.lineWidth
         } else {
-            selectedSize = item.lineWidth * 4.0
+            selectedLineWidth = item.lineWidth
         }
         if let style = item.fontStyle {
             selectedTextStyle = style
@@ -1049,10 +1148,21 @@ struct OverlayRootView: View {
         DispatchQueue.main.async {
             if let index = annotations.firstIndex(where: { $0.id == id }) {
                 let item = annotations[index]
-                let endX = item.startPoint.x + size.width
-                let endY = item.startPoint.y + size.height
-                if item.endPoint.x != endX || item.endPoint.y != endY {
-                    annotations[index].endPoint = CGPoint(x: endX, y: endY)
+                if item.type == .numberedText {
+                    let offset = item.calloutOffset ?? CGSize(width: 16.0, height: -45.0)
+                    let originX = item.startPoint.x + offset.width
+                    let originY = item.startPoint.y + offset.height
+                    let endX = originX + size.width
+                    let endY = originY + size.height
+                    if item.endPoint.x != endX || item.endPoint.y != endY {
+                        annotations[index].endPoint = CGPoint(x: endX, y: endY)
+                    }
+                } else {
+                    let endX = item.startPoint.x + size.width
+                    let endY = item.startPoint.y + size.height
+                    if item.endPoint.x != endX || item.endPoint.y != endY {
+                        annotations[index].endPoint = CGPoint(x: endX, y: endY)
+                    }
                 }
             }
         }
@@ -1135,6 +1245,40 @@ struct OverlayRootView: View {
     }
     
     @MainActor
+    private func generateDragURL() -> URL? {
+        guard !hasCaptured, let rect = finalRect else { return nil }
+        
+        let scale = capture.screen.backingScaleFactor
+        let cropRect = CGRect(
+            x: rect.origin.x * scale,
+            y: rect.origin.y * scale,
+            width: rect.width * scale,
+            height: rect.height * scale
+        )
+        
+        let cleanCropped = capture.image.cropping(to: cropRect)!
+        let shiftedAnnotations = offsetAnnotations(annotations, by: rect.origin)
+        
+        let exportView = AnnotationCanvasLayer(
+            image: cleanCropped,
+            displaySize: CGSize(width: rect.width, height: rect.height),
+            annotations: shiftedAnnotations,
+            currentAnnotation: nil
+        )
+        let renderer = ImageRenderer(content: exportView)
+        renderer.scale = scale
+        
+        guard let finalCropped = renderer.cgImage else {
+            return nil
+        }
+        
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("Screenshot_\(UUID().uuidString).png")
+        guard let destination = CGImageDestinationCreateWithURL(tempURL as CFURL, UTType.png.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(destination, finalCropped, nil)
+        return CGImageDestinationFinalize(destination) ? tempURL : nil
+    }
+    
+    @MainActor
     private func pinScreenshot() {
         guard let rect = finalRect else { return }
         let scale = capture.screen.backingScaleFactor
@@ -1168,7 +1312,9 @@ struct OverlayRootView: View {
 struct UnifiedToolbarView: View {
     @Binding var selectedTool: AnnotationToolType
     @Binding var selectedColor: Color
-    @Binding var selectedSize: CGFloat
+    @Binding var selectedFontSize: CGFloat
+    @Binding var selectedLineWidth: CGFloat
+    @Binding var selectedBrushSize: CGFloat
     @Binding var selectedTextStyle: TextStyle
     
     var showTextStylePicker: Bool {
@@ -1186,6 +1332,7 @@ struct UnifiedToolbarView: View {
     let onTranslate: () -> Void
     let onCancel: () -> Void
     let onConfirm: () -> Void
+    let onGenerateDragURL: (@MainActor () -> URL?)?
     
     let colors: [Color] = [.red, .blue, .green, .yellow, .white, .black]
     
@@ -1226,7 +1373,6 @@ struct UnifiedToolbarView: View {
                 
                 // 4. 确认取消组
                 HStack(spacing: 8) {
-                    
                     // Cancel
                     Button(action: onCancel) {
                         Image(systemName: "xmark")
@@ -1282,24 +1428,41 @@ struct UnifiedToolbarView: View {
                         Image(systemName: "slider.horizontal.3")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
-                        Slider(value: $selectedSize, in: 2...64, step: 1)
-                            .frame(width: 100)
-                        Text("\(Int(selectedSize))")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.secondary)
-                            .frame(width: 20, alignment: .trailing)
+
+                        if showTextStylePicker || selectedTool == .counter {
+                            Slider(value: $selectedFontSize, in: 12...128, step: 1)
+                                .frame(width: 100)
+                            Text("\(Int(selectedFontSize))")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .frame(width: 24, alignment: .trailing)
+                        } else if selectedTool == .highlighter || selectedTool == .blur || selectedTool == .mosaic {
+                            Slider(value: $selectedBrushSize, in: 4...100, step: 1)
+                                .frame(width: 100)
+                            Text("\(Int(selectedBrushSize))")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .frame(width: 24, alignment: .trailing)
+                        } else {
+                            Slider(value: $selectedLineWidth, in: 1...30, step: 1)
+                                .frame(width: 100)
+                            Text("\(Int(selectedLineWidth))")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .frame(width: 24, alignment: .trailing)
+                        }
                     }
                     
                     // 文字样式
-                    if showTextStylePicker {
-                        Picker("", selection: $selectedTextStyle) {
-                            ForEach(TextStyle.allCases, id: \.self) { style in
-                                Text(style.rawValue).tag(style)
-                            }
+                    Picker("", selection: $selectedTextStyle) {
+                        ForEach(TextStyle.allCases, id: \.self) { style in
+                            Text(style.rawValue).tag(style)
                         }
-                        .pickerStyle(MenuPickerStyle())
-                        .frame(width: 110)
                     }
+                    .pickerStyle(MenuPickerStyle())
+                    .frame(width: 90)
+                    .opacity(showTextStylePicker ? 1 : 0)
+                    .allowsHitTesting(showTextStylePicker)
                     
                     Spacer()
                     
@@ -1440,15 +1603,15 @@ struct GroupButton: View {
     var toolName: String {
         switch tool {
         case .rectangle: return "矩形"
-        case .filledRectangle: return "填充矩形"
-        case .ellipse: return "椭圆"
+        case .filledRectangle: return "实心矩形"
+        case .ellipse: return "圆形"
         case .line: return "直线"
         case .arrow: return "箭头"
-        case .text: return "文本"
-        case .numberedText: return "带序号文本"
-        case .counter: return "序号"
-        case .pencil: return "铅笔"
-        case .highlighter: return "高亮"
+        case .text: return "文字"
+        case .numberedText: return "序号文字"
+        case .counter: return "计数器"
+        case .pencil: return "画笔"
+        case .highlighter: return "荧光笔"
         case .blur: return "模糊"
         case .mosaic: return "马赛克"
         case .spotlight: return "聚焦"

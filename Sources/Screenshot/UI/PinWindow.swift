@@ -73,17 +73,8 @@ public class PinManager {
         if let customRect = rect {
             finalRect = customRect
         } else {
-            // 贴图大小限制（最大不超过主屏幕可视区域的 35%）
-            let maxW = screenFrame.width * 0.35
-            let maxH = screenFrame.height * 0.35
-            var w = CGFloat(image.width) / scale
-            var h = CGFloat(image.height) / scale
-            
-            if w > maxW || h > maxH {
-                let ratio = min(maxW / w, maxH / h)
-                w *= ratio
-                h *= ratio
-            }
+            let w = CGFloat(image.width) / scale
+            let h = CGFloat(image.height) / scale
             
             if pinWindows.isEmpty {
                 overflowCount = 0

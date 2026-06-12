@@ -110,6 +110,11 @@ public class HistoryManager {
         return NSImage(contentsOf: fileURL(for: fileName))
     }
     
+    /// 获取某条记录的文件 URL (用于拖拽等)
+    public func getSavedImageURL(for record: ScreenshotRecord) -> URL {
+        return fileURL(for: record.fileName)
+    }
+    
     /// 删除某条记录
     public func removeRecord(id: UUID) {
         guard let index = records.firstIndex(where: { $0.id == id }) else { return }

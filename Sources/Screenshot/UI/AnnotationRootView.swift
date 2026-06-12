@@ -1,5 +1,6 @@
 import SwiftUI
-import Cocoa
+import AppKit
+import UniformTypeIdentifiers
 import CoreImage
 import CoreImage.CIFilterBuiltins
 import Translation
@@ -19,7 +20,9 @@ public struct AnnotationRootView: View {
     @State private var selectedTool: AnnotationToolType = .rectangle
     @State private var selectedColor: Color = .red
     
-    @State private var selectedSize: CGFloat = 24.0
+    @State private var selectedFontSize: CGFloat = 16.0
+    @State private var selectedLineWidth: CGFloat = 4.0
+    @State private var selectedBrushSize: CGFloat = 24.0
     @State private var selectedTextStyle: TextStyle = .standard
     
     // 标注选中与调整状态
@@ -101,7 +104,7 @@ public struct AnnotationRootView: View {
     private func redo() {
         guard !redoStack.isEmpty else { return }
         undoStack.append(annotations)
-        annotations = redoStack.removeLast()
+        annotations = undoStack.removeLast()
     }
     
     public var body: some View {
@@ -156,8 +159,9 @@ public struct AnnotationRootView: View {
                                 DispatchQueue.main.async {
                                     if let index = annotations.firstIndex(where: { $0.id == id }) {
                                         let item = annotations[index]
-                                        let endX = item.startPoint.x + size.width
-                                        let endY = item.startPoint.y + size.height
+                                        let offset = item.calloutOffset ?? (item.type == .numberedText ? CGSize(width: 16.0, height: -45.0) : .zero)
+                                        let endX = item.startPoint.x + offset.width + size.width
+                                        let endY = item.startPoint.y + offset.height + size.height
                                         if item.endPoint.x != endX || item.endPoint.y != endY {
                                             annotations[index].endPoint = CGPoint(x: endX, y: endY)
                                         }
@@ -204,7 +208,7 @@ public struct AnnotationRootView: View {
                         // 7. PSD-style 圆形画笔光标
                         if isHoveringCanvas && (selectedTool == .pencil || selectedTool == .highlighter || selectedTool == .blur || selectedTool == .mosaic) {
                             let brushSize: CGFloat = {
-                                let lw = max(1.0, selectedSize / 4.0)
+                                let lw = max(1.0, selectedLineWidth / 4.0)
                                 let baseSize: CGFloat
                                 if selectedTool == .pencil {
                                     baseSize = lw
@@ -234,7 +238,9 @@ public struct AnnotationRootView: View {
                 UnifiedToolbarView(
                     selectedTool: $selectedTool,
                     selectedColor: $selectedColor,
-                    selectedSize: $selectedSize,
+                    selectedFontSize: $selectedFontSize,
+                    selectedLineWidth: $selectedLineWidth,
+                    selectedBrushSize: $selectedBrushSize,
                     selectedTextStyle: $selectedTextStyle,
                     hasUndo: !undoStack.isEmpty,
                     hasRedo: !redoStack.isEmpty,
@@ -246,7 +252,8 @@ public struct AnnotationRootView: View {
                     onOCR: { performOCR(isForTranslation: false) },
                     onTranslate: { performOCR(isForTranslation: true) },
                     onCancel: onClose,
-                    onConfirm: exportAndClose
+                    onConfirm: exportAndClose,
+                    onGenerateDragURL: { return generateDragURL() }
                 )
             }
             
@@ -333,8 +340,11 @@ public struct AnnotationRootView: View {
         .onChange(of: selectedColor) { newColor in
             updateSelectedAnnotation(color: newColor)
         }
-        .onChange(of: selectedSize) { newSize in
-            updateSelectedAnnotation(size: newSize)
+        .onChange(of: selectedFontSize) { newSize in
+            updateSelectedAnnotation(fontSize: newSize)
+        }
+        .onChange(of: selectedLineWidth) { newSize in
+            updateSelectedAnnotation(lineWidth: newSize)
         }
         .onChange(of: selectedTextStyle) { newStyle in
             updateSelectedAnnotation(style: newStyle)
@@ -366,28 +376,59 @@ public struct AnnotationRootView: View {
         return nil
     }
     
-    private func handleHover(_ point: CGPoint) {
-        // 1. Check annotation handles if selected
+    private func hitTestAnnotation(point: CGPoint) -> (UUID, DragHandle?)? {
+        // 检查是否点中了 NumberedText 的起始点圆圈
+        if let selectedId = selectedAnnotationId,
+           let index = annotations.firstIndex(where: { $0.id == selectedId }) {
+            let item = annotations[index]
+            if item.type == .numberedText {
+                let size = (item.fontSize ?? 16.0) * 1.5
+                let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
+                if circleRect.contains(point) {
+                    return (selectedId, .calloutOrigin)
+                }
+            }
+        }
+        
+        // 先检查是否点中了某个控制柄
         if let selectedId = selectedAnnotationId,
            let index = annotations.firstIndex(where: { $0.id == selectedId }) {
             let itemRect = annotations[index].rect
             if let handle = hitTestHandle(point: point, rect: itemRect) {
-                switch handle {
-                case .left, .right: NSCursor.resizeLeftRight.set()
-                case .top, .bottom: NSCursor.resizeUpDown.set()
-                case .topLeft, .bottomRight: NSCursor.crosshair.set()
-                case .topRight, .bottomLeft: NSCursor.crosshair.set()
-                }
-                return
-            } else if itemRect.contains(point) {
-                NSCursor.openHand.set()
-                return
+                return (selectedId, handle)
             }
         }
         
-        // 2. Check other annotations for openHand
-        if annotations.reversed().contains(where: { $0.rect.contains(point) }) {
-            NSCursor.openHand.set()
+        // 检查未选中的 NumberedText 的起始点圆圈
+        for item in annotations.reversed() {
+            if item.type == .numberedText {
+                let size = (item.fontSize ?? 16.0) * 1.5
+                let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
+                if circleRect.contains(point) {
+                    return (item.id, .calloutOrigin)
+                }
+            }
+        }
+        
+        // 再检查是否点中了某个标注的包围盒
+        for item in annotations.reversed() {
+            if item.rect.contains(point) {
+                return (item.id, nil)
+            }
+        }
+        
+        return nil
+    }
+    
+    private func handleHover(_ point: CGPoint) {
+        if let (_, handle) = hitTestAnnotation(point: point) {
+            if handle == .calloutOrigin {
+                NSCursor.pointingHand.set()
+            } else if handle != nil {
+                NSCursor.crosshair.set()
+            } else {
+                NSCursor.openHand.set()
+            }
             return
         }
         
@@ -406,82 +447,35 @@ public struct AnnotationRootView: View {
         let clickInterval = now - lastClickTime
         lastClickTime = now
         
-        // 1. Check if clicking on selected annotation's handles or body
-        if let selectedId = selectedAnnotationId,
-           let index = annotations.firstIndex(where: { $0.id == selectedId }) {
-            let itemRect = annotations[index].rect
-            if let handle = hitTestHandle(point: point, rect: itemRect) {
-                prepareForWrite()
-                annotationActiveHandle = handle
-                annotationInitialItem = annotations[index]
-                annotationDragStartPoint = point
-                lastClickAnnotationId = selectedId
-                return
-            } else if itemRect.contains(point) {
-                prepareForWrite()
-                annotationActiveHandle = nil // means moving
-                annotationInitialItem = annotations[index]
-                annotationDragStartPoint = point
-                
-                // 双击检测
-                if lastClickAnnotationId == selectedId && clickInterval < 0.3 {
-                    let type = annotations[index].type
-                    if type == .text || type == .numberedText {
-                        prepareForWrite()
-                        editingTextId = selectedId
-                    }
-                }
-                lastClickAnnotationId = selectedId
-                return
-            }
-        }
-        
-        // 2. Check if clicking on another annotation
-        if let hitAnnotation = annotations.reversed().first(where: { $0.rect.contains(point) }) {
+        if let (id, handle) = hitTestAnnotation(point: point) {
             prepareForWrite()
-            selectedAnnotationId = hitAnnotation.id
-            annotationActiveHandle = nil
-            annotationInitialItem = hitAnnotation
+            selectedAnnotationId = id
+            annotationActiveHandle = handle
+            annotationInitialItem = annotations.first(where: { $0.id == id })
             annotationDragStartPoint = point
             
-            // 双击检测
-            if lastClickAnnotationId == hitAnnotation.id && clickInterval < 0.3 {
-                if hitAnnotation.type == .text || hitAnnotation.type == .numberedText {
-                    editingTextId = hitAnnotation.id
+            if handle == nil && lastClickAnnotationId == id && clickInterval < 0.3 {
+                let type = annotations.first(where: { $0.id == id })?.type
+                if type == .text || type == .numberedText {
+                    editingTextId = id
                 }
             }
-            lastClickAnnotationId = hitAnnotation.id
+            lastClickAnnotationId = id
             return
         }
         
         lastClickAnnotationId = nil
         selectedAnnotationId = nil
         
-        if editingTextId != nil {
-            editingTextId = nil
-        }
+        if editingTextId != nil { editingTextId = nil }
         
         if selectedTool == .text || selectedTool == .numberedText {
             prepareForWrite()
-            if let activeWindow = NSApp.windows.first(where: { $0 is AnnotationWindow && $0.isVisible }) {
-                activeWindow.makeKey()
-            }
             var cValue: Int? = nil
             if selectedTool == .numberedText {
-                let existingCount = annotations.filter { $0.type == .counter || $0.type == .numberedText }.count
-                cValue = existingCount + 1
+                cValue = annotations.filter { $0.type == .counter || $0.type == .numberedText }.count + 1
             }
-            let textItem = AnnotationItem(
-                type: selectedTool,
-                startPoint: point,
-                endPoint: point,
-                color: selectedColor,
-                lineWidth: 2.0,
-                text: "",
-                fontStyle: selectedTextStyle,
-                fontSize: selectedSize,
-                counterValue: cValue
-            )
+            let textItem = AnnotationItem(type: selectedTool, startPoint: point, endPoint: point, color: selectedColor, lineWidth: 2.0, text: "", fontStyle: selectedTextStyle, fontSize: selectedFontSize, counterValue: cValue)
             annotations.append(textItem)
             editingTextId = textItem.id
         } else {
@@ -489,38 +483,21 @@ public struct AnnotationRootView: View {
                 prepareForWrite()
                 var cValue: Int? = nil
                 if selectedTool == .counter || selectedTool == .numberedText {
-                    let existingCount = annotations.filter { $0.type == .counter || $0.type == .numberedText }.count
-                    cValue = existingCount + 1
+                    cValue = annotations.filter { $0.type == .counter || $0.type == .numberedText }.count + 1
                 }
-                
-                var newAnnotation = AnnotationItem(
-                    type: selectedTool,
-                    startPoint: point,
-                    endPoint: point,
-                    color: selectedColor,
-                    lineWidth: max(1.0, selectedSize / 4.0),
-                    fontStyle: selectedTextStyle,
-                    fontSize: selectedSize,
-                    counterValue: cValue
-                )
-                
-                if newAnnotation.isFreehandTool {
-                    newAnnotation.points = [point]
-                }
-                
+                let isThickBrush = selectedTool == .highlighter || selectedTool == .blur || selectedTool == .mosaic
+                let lw = isThickBrush ? selectedBrushSize : selectedLineWidth
+                var newAnnotation = AnnotationItem(type: selectedTool, startPoint: point, endPoint: point, color: selectedColor, lineWidth: lw, fontStyle: selectedTextStyle, fontSize: selectedFontSize, counterValue: cValue)
+                if newAnnotation.isFreehandTool { newAnnotation.points = [point] }
                 currentAnnotation = newAnnotation
             }
-            
-            if currentAnnotation?.isFreehandTool == true {
-                currentAnnotation?.points?.append(point)
-            }
+            if currentAnnotation?.isFreehandTool == true { currentAnnotation?.points?.append(point) }
             currentAnnotation?.endPoint = point
         }
     }
     
     private func handleDragChange(_ point: CGPoint) {
         lastDragPoint = point
-        // Check if moving/resizing an annotation
         if let selectedId = selectedAnnotationId,
            let index = annotations.firstIndex(where: { $0.id == selectedId }),
            let initialItem = annotationInitialItem,
@@ -531,45 +508,33 @@ public struct AnnotationRootView: View {
             var updatedItem = initialItem
             
             if let handle = annotationActiveHandle {
-                // Resize
-                let initRect = initialItem.rect
-                var newRect = initRect
-                
-                switch handle {
-                case .left:
-                    newRect.origin.x = min(initRect.maxX - 5, initRect.origin.x + dx)
-                    newRect.size.width = initRect.maxX - newRect.origin.x
-                case .right:
-                    newRect.size.width = max(5, initRect.size.width + dx)
-                case .top:
-                    newRect.origin.y = min(initRect.maxY - 5, initRect.origin.y + dy)
-                    newRect.size.height = initRect.maxY - newRect.origin.y
-                case .bottom:
-                    newRect.size.height = max(5, initRect.size.height + dy)
-                case .topLeft:
-                    newRect.origin.x = min(initRect.maxX - 5, initRect.origin.x + dx)
-                    newRect.size.width = initRect.maxX - newRect.origin.x
-                    newRect.origin.y = min(initRect.maxY - 5, initRect.origin.y + dy)
-                    newRect.size.height = initRect.maxY - newRect.origin.y
-                case .topRight:
-                    newRect.size.width = max(5, initRect.size.width + dx)
-                    newRect.origin.y = min(initRect.maxY - 5, initRect.origin.y + dy)
-                    newRect.size.height = initRect.maxY - newRect.origin.y
-                case .bottomLeft:
-                    newRect.origin.x = min(initRect.maxX - 5, initRect.origin.x + dx)
-                    newRect.size.width = initRect.maxX - newRect.origin.x
-                    newRect.size.height = max(5, initRect.size.height + dy)
-                case .bottomRight:
-                    newRect.size.width = max(5, initRect.size.width + dx)
-                    newRect.size.height = max(5, initRect.size.height + dy)
+                if handle == .calloutOrigin {
+                    updatedItem.move(by: CGSize(width: dx, height: dy))
+                } else {
+                    let initRect = initialItem.rect
+                    var newRect = initRect
+                    switch handle {
+                    case .left: newRect.origin.x = min(initRect.maxX - 5, initRect.origin.x + dx); newRect.size.width = initRect.maxX - newRect.origin.x
+                    case .right: newRect.size.width = max(5, initRect.size.width + dx)
+                    case .top: newRect.origin.y = min(initRect.maxY - 5, initRect.origin.y + dy); newRect.size.height = initRect.maxY - newRect.origin.y
+                    case .bottom: newRect.size.height = max(5, initRect.size.height + dy)
+                    case .topLeft: newRect.origin.x = min(initRect.maxX - 5, initRect.origin.x + dx); newRect.size.width = initRect.maxX - newRect.origin.x; newRect.origin.y = min(initRect.maxY - 5, initRect.origin.y + dy); newRect.size.height = initRect.maxY - newRect.origin.y
+                    case .topRight: newRect.size.width = max(5, initRect.size.width + dx); newRect.origin.y = min(initRect.maxY - 5, initRect.origin.y + dy); newRect.size.height = initRect.maxY - newRect.origin.y
+                    case .bottomLeft: newRect.origin.x = min(initRect.maxX - 5, initRect.origin.x + dx); newRect.size.width = initRect.maxX - newRect.origin.x; newRect.size.height = max(5, initRect.size.height + dy)
+                    case .bottomRight: newRect.size.width = max(5, initRect.size.width + dx); newRect.size.height = max(5, initRect.size.height + dy)
+                    case .calloutOrigin: break
+                    }
+                    updatedItem.resize(to: newRect, from: initRect)
                 }
-                
-                updatedItem.resize(to: newRect, from: initRect)
             } else {
-                // Move
-                updatedItem.move(by: CGSize(width: dx, height: dy))
+                if updatedItem.type == .numberedText {
+                    let oldOffset = updatedItem.calloutOffset ?? CGSize(width: 16.0, height: -45.0)
+                    updatedItem.calloutOffset = CGSize(width: oldOffset.width + dx, height: oldOffset.height + dy)
+                    updatedItem.endPoint = CGPoint(x: updatedItem.endPoint.x + dx, y: updatedItem.endPoint.y + dy)
+                } else {
+                    updatedItem.move(by: CGSize(width: dx, height: dy))
+                }
             }
-            
             annotations[index] = updatedItem
             return
         }
@@ -585,11 +550,7 @@ public struct AnnotationRootView: View {
     }
     
     private func handleDragEnd() {
-        // 检测单击进入编辑（在已选中的文本上点击且无大位移）
-        if let startPos = dragStartPos,
-           let lastPos = lastDragPoint,
-           let selectedId = selectedAnnotationId,
-           let index = annotations.firstIndex(where: { $0.id == selectedId }) {
+        if let startPos = dragStartPos, let lastPos = lastDragPoint, let selectedId = selectedAnnotationId, let index = annotations.firstIndex(where: { $0.id == selectedId }) {
             let dx = abs(lastPos.x - startPos.x)
             let dy = abs(lastPos.y - startPos.y)
             let isText = annotations[index].type == .text || annotations[index].type == .numberedText
@@ -606,11 +567,7 @@ public struct AnnotationRootView: View {
             annotationInitialItem = nil
             annotationDragStartPoint = nil
             annotationActiveHandle = nil
-            if !changed {
-                if !undoStack.isEmpty {
-                    _ = undoStack.removeLast()
-                }
-            }
+            if !changed { if !undoStack.isEmpty { _ = undoStack.removeLast() } }
             return
         }
         
@@ -618,29 +575,19 @@ public struct AnnotationRootView: View {
             if let final = currentAnnotation {
                 var shouldSave = false
                 if final.isFreehandTool {
-                    if let points = final.points, points.count > 3 {
-                        annotations.append(final)
-                        shouldSave = true
-                    }
+                    if let points = final.points, points.count > 3 { annotations.append(final); shouldSave = true }
                 } else {
                     let dx = abs(final.startPoint.x - final.endPoint.x)
                     let dy = abs(final.startPoint.y - final.endPoint.y)
-                    if final.type == .counter || dx > 5 || dy > 5 {
-                        annotations.append(final)
-                        shouldSave = true
-                    }
+                    if final.type == .counter || dx > 5 || dy > 5 { annotations.append(final); shouldSave = true }
                 }
-                if !shouldSave {
-                    if !undoStack.isEmpty {
-                        _ = undoStack.removeLast()
-                    }
-                }
+                if !shouldSave { if !undoStack.isEmpty { _ = undoStack.removeLast() } }
             }
             currentAnnotation = nil
         }
     }
     
-    private func updateSelectedAnnotation(color: Color? = nil, size: CGFloat? = nil, style: TextStyle? = nil) {
+    private func updateSelectedAnnotation(color: Color? = nil, fontSize: CGFloat? = nil, lineWidth: CGFloat? = nil, style: TextStyle? = nil) {
         guard let selectedId = selectedAnnotationId,
               let index = annotations.firstIndex(where: { $0.id == selectedId }) else { return }
         
@@ -652,18 +599,17 @@ public struct AnnotationRootView: View {
             changed = true
         }
         
-        if let newSize = size {
-            if item.type == .text || item.type == .numberedText || item.type == .counter {
-                if item.fontSize != newSize {
-                    item.fontSize = newSize
-                    changed = true
-                }
-            } else {
-                let mappedWidth = max(1.0, newSize / 4.0)
-                if item.lineWidth != mappedWidth {
-                    item.lineWidth = mappedWidth
-                    changed = true
-                }
+        if let newSize = fontSize {
+            if item.fontSize != newSize {
+                item.fontSize = newSize
+                changed = true
+            }
+        }
+        
+        if let newWidth = lineWidth {
+            if item.lineWidth != newWidth {
+                item.lineWidth = newWidth
+                changed = true
             }
         }
         
@@ -685,9 +631,9 @@ public struct AnnotationRootView: View {
         
         selectedColor = item.color
         if item.type == .text || item.type == .numberedText || item.type == .counter {
-            selectedSize = item.fontSize ?? 24.0
+            selectedFontSize = item.fontSize ?? 16.0
         } else {
-            selectedSize = item.lineWidth * 4.0
+            selectedLineWidth = item.lineWidth
         }
         if let style = item.fontStyle {
             selectedTextStyle = style
@@ -717,21 +663,9 @@ public struct AnnotationRootView: View {
             onClose()
         }
     }
-    
     @MainActor
     private func exportAndClose() {
-        let exportView = AnnotationCanvasLayer(
-            image: image,
-            displaySize: originalSize,
-            annotations: annotations,
-            currentAnnotation: nil
-        )
-        
-        let renderer = ImageRenderer(content: exportView)
-        let scaleFactor = CGFloat(image.width) / originalSize.width
-        renderer.scale = scaleFactor
-        
-        if let cgImage = renderer.cgImage {
+        if let cgImage = generateImageForExport() {
             if let rId = recordId {
                 HistoryManager.shared.updateRecord(id: rId, annotations: annotations, finalImage: cgImage)
             } else {
@@ -756,6 +690,36 @@ public struct AnnotationRootView: View {
             print("❌ [Annotation] ImageRenderer 渲染失败")
             onClose()
         }
+    }
+    
+    @MainActor
+    private func generateImageForExport() -> CGImage? {
+        let exportView = AnnotationCanvasLayer(
+            image: image,
+            displaySize: originalSize,
+            annotations: annotations,
+            currentAnnotation: nil,
+            selectedAnnotationId: nil,
+            editingTextId: nil,
+            onTextChanged: { _, _ in },
+            onTextCommit: {},
+            onSizeChanged: { _, _ in }
+        )
+        
+        let renderer = ImageRenderer(content: exportView)
+        let scaleFactor = CGFloat(image.width) / originalSize.width
+        renderer.scale = scaleFactor
+        
+        return renderer.cgImage
+    }
+    
+    @MainActor
+    private func generateDragURL() -> URL? {
+        guard let cgImage = generateImageForExport() else { return nil }
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("Screenshot_\(UUID().uuidString).png")
+        guard let destination = CGImageDestinationCreateWithURL(tempURL as CFURL, UTType.png.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(destination, cgImage, nil)
+        return CGImageDestinationFinalize(destination) ? tempURL : nil
     }
     
     // MARK: - OCR & Translation
@@ -975,7 +939,7 @@ struct AnnotationShapeView: View {
                         var path = Path()
                         path.move(to: points.first!)
                         path.addLines(points)
-                        context.stroke(path, with: .color(item.color.opacity(0.5)), style: StrokeStyle(lineWidth: max(20, item.lineWidth * 2), lineCap: .round, lineJoin: .round))
+                        context.stroke(path, with: .color(item.color.opacity(0.5)), style: StrokeStyle(lineWidth: item.lineWidth, lineCap: .round, lineJoin: .round))
                     }
                 }
                     
@@ -990,9 +954,17 @@ struct AnnotationShapeView: View {
                 
                 // Helper function to apply text style
                 let styledText: (String) -> AnyView = { text in
+                    let getContrastColor: (Color) -> Color = { bg in
+                        let nsColor = NSColor(bg).usingColorSpace(.sRGB) ?? NSColor(bg)
+                        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0
+                        nsColor.getRed(&r, green: &g, blue: &b, alpha: nil)
+                        let luminance = 0.299 * r + 0.587 * g + 0.114 * b
+                        return luminance > 0.6 ? .black : .white
+                    }
+                    
                     let t = Text(text)
-                        .font(fontStyle == .monospaced || fontStyle == .monospacedBoxed ? .system(size: fontSize, weight: .bold, design: .monospaced) : .system(size: fontSize, weight: .bold))
-                        .foregroundColor(fontStyle == .outlined ? .clear : (fontStyle == .standard || fontStyle == .monospaced || fontStyle == .rounded ? item.color : .white))
+                        .font(.system(size: fontSize, weight: .bold))
+                        .foregroundColor(fontStyle == .outlined ? .clear : (fontStyle == .standard ? item.color : getContrastColor(item.color)))
                     
                     var view: AnyView
                     if fontStyle == .outlined {
@@ -1002,8 +974,8 @@ struct AnnotationShapeView: View {
                             .foregroundColor(.white)
                             .shadow(color: item.color, radius: 1, x: 1, y: 1)
                             .shadow(color: item.color, radius: 1, x: -1, y: -1))
-                    } else if fontStyle == .boxed || fontStyle == .roundedBoxed || fontStyle == .monospacedBoxed {
-                        view = AnyView(t.padding(8).background(item.color).cornerRadius(fontStyle == .roundedBoxed ? 12 : 4))
+                    } else if fontStyle == .boxed || fontStyle == .roundedBoxed {
+                        view = AnyView(t.padding(8).background(item.color.opacity(0.85)).cornerRadius(fontStyle == .roundedBoxed ? 12 : 4))
                     } else {
                         view = AnyView(t)
                     }
@@ -1011,52 +983,120 @@ struct AnnotationShapeView: View {
                 }
                 
                 ZStack(alignment: .topLeading) {
-                    HStack(alignment: .top, spacing: 8) {
-                        if item.type == .numberedText, let count = item.counterValue {
-                            ZStack {
-                                Circle().fill(item.color).frame(width: fontSize * 1.5, height: fontSize * 1.5)
-                                Text("\(count)").font(.system(size: fontSize * 0.8, weight: .bold)).foregroundColor(.white)
-                            }
+                    if item.type == .numberedText, let count = item.counterValue {
+                        let offset = item.calloutOffset ?? CGSize(width: 16.0, height: -45.0)
+                        
+                        // 连接线 (从 startPoint 到 text box)
+                        Canvas { context, size in
+                            var path = Path()
+                            path.move(to: item.startPoint)
+                            
+                            // textOrigin is the TOP-LEFT corner of the text box
+                            let textOrigin = CGPoint(x: item.startPoint.x + offset.width, y: item.startPoint.y + offset.height)
+                            let textWidth = item.rect.width
+                            let textHeight = item.rect.height
+                            let textCenterY = textOrigin.y + textHeight / 2
+                            
+                            // line connects to left or right edge depending on relative position
+                            let isLeft = offset.width < 0
+                            let textAnchorX = isLeft ? textOrigin.x + textWidth : textOrigin.x
+                            
+                            path.addLine(to: CGPoint(x: textAnchorX, y: textCenterY))
+                            context.stroke(path, with: .color(item.color), style: StrokeStyle(lineWidth: max(2, fontSize * 0.15)))
                         }
                         
-                        if isEditing {
-                            TextField("输入文本...", text: Binding(
-                                get: { item.text ?? "" },
-                                set: { onTextChanged?(item.id, $0) }
-                            ), axis: .vertical)
-                            .onSubmit {
-                                onTextCommit?()
-                            }
-                            .focused($isFocused)
-                            .textFieldStyle(PlainTextFieldStyle())
-                            .font(fontStyle == .monospaced || fontStyle == .monospacedBoxed ? .system(size: fontSize, weight: .bold, design: .monospaced) : .system(size: fontSize, weight: .bold))
-                            .foregroundColor(item.color)
-                            // 设置最大最小宽度
-                            .frame(minWidth: 100, maxWidth: finalMaxWidth, alignment: .leading)
-                            .padding(8)
-                            .background(Color.black.opacity(0.3))
-                            .cornerRadius(8)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .onAppear {
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                    isFocused = true
-                                }
-                            }
-                        } else {
-                            styledText(item.text?.isEmpty == false ? item.text! : " ")
-                                .frame(maxWidth: finalMaxWidth, alignment: .leading)
+                        // 序号点
+                        ZStack {
+                            Circle().fill(item.color).frame(width: fontSize * 1.5, height: fontSize * 1.5)
+                            Text("\(count)").font(.system(size: fontSize * 0.8, weight: .bold)).foregroundColor(.white)
                         }
+                        .position(x: item.startPoint.x, y: item.startPoint.y)
+                        
+                        // 独立文本区 (Offset by calloutOffset)
+                        Group {
+                            if isEditing {
+                                TextField("输入文本...", text: Binding(
+                                    get: { item.text ?? "" },
+                                    set: { onTextChanged?(item.id, $0) }
+                                ), axis: .vertical)
+                                .onSubmit {
+                                    onTextCommit?()
+                                }
+                                .focused($isFocused)
+                                .textFieldStyle(PlainTextFieldStyle())
+                                .font(.system(size: fontSize, weight: .bold))
+                                .foregroundColor(fontStyle == .standard ? item.color : .white)
+                                // 设置最大最小宽度
+                                .frame(minWidth: 100, maxWidth: finalMaxWidth, alignment: .leading)
+                                .padding(8)
+                                .background(fontStyle == .standard ? Color.black.opacity(0.85) : Color.black.opacity(0.3))
+                                .cornerRadius(8)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .onAppear {
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        isFocused = true
+                                    }
+                                }
+                            } else {
+                                styledText(item.text?.isEmpty == false ? item.text! : " ")
+                            }
+                        }
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear
+                                    .onAppear {
+                                        onSizeChanged?(item.id, geo.size)
+                                    }
+                                    .onChange(of: geo.size) { newSize in
+                                        onSizeChanged?(item.id, newSize)
+                                    }
+                            }
+                        )
+                        .offset(x: item.startPoint.x + offset.width,
+                                y: item.startPoint.y + offset.height)
+                        
+                    } else {
+                        // 常规文本
+                        HStack(alignment: .top, spacing: 0) {
+                            if isEditing {
+                                TextField("输入文本...", text: Binding(
+                                    get: { item.text ?? "" },
+                                    set: { onTextChanged?(item.id, $0) }
+                                ), axis: .vertical)
+                                .onSubmit {
+                                    onTextCommit?()
+                                }
+                                .focused($isFocused)
+                                .textFieldStyle(PlainTextFieldStyle())
+                                .font(.system(size: fontSize, weight: .bold))
+                                .foregroundColor(fontStyle == .standard ? item.color : .white)
+                                // 设置最大最小宽度
+                                .frame(minWidth: 100, maxWidth: finalMaxWidth, alignment: .leading)
+                                .padding(8)
+                                .background(Color.black.opacity(0.3))
+                                .cornerRadius(8)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .onAppear {
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        isFocused = true
+                                    }
+                                }
+                            } else {
+                                styledText(item.text?.isEmpty == false ? item.text! : " ")
+                                    .frame(maxWidth: finalMaxWidth, alignment: .leading)
+                            }
+                        }
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear
+                                    .onChange(of: geo.size) { newSize in
+                                        onSizeChanged?(item.id, newSize)
+                                    }
+                            }
+                        )
+                        .offset(x: item.startPoint.x, y: item.startPoint.y)
                     }
-                    .background(
-                        GeometryReader { geo in
-                            Color.clear
-                                .onChange(of: geo.size) { newSize in
-                                    onSizeChanged?(item.id, newSize)
-                                }
-                        }
-                    )
                 }
-                .offset(x: item.startPoint.x, y: item.startPoint.y)
                     
             case .blur, .mosaic:
                 if let points = item.points, points.count > 1 {
@@ -1071,7 +1111,7 @@ struct AnnotationShapeView: View {
                             var path = Path()
                             path.move(to: points.first!)
                             path.addLines(points)
-                            context.stroke(path, with: .color(.black), style: StrokeStyle(lineWidth: max(20, item.lineWidth * 2), lineCap: .round, lineJoin: .round))
+                            context.stroke(path, with: .color(.black), style: StrokeStyle(lineWidth: item.lineWidth, lineCap: .round, lineJoin: .round))
                         }
                     )
                 } else {

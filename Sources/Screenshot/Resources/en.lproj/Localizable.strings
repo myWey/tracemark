@@ -34,3 +34,20 @@
 "今天" = "Today";
 "昨天" = "Yesterday";
 "更早" = "Earlier";
+
+"按 ⌘C 复制颜色" = "Press ⌘C to copy color";
+"色值已复制到剪贴板" = "Color copied to clipboard";
+"截图已复制并保存至历史记录" = "Screenshot copied & saved to history";
+
+"Clear_All" = "Clear All";
+"Delete_Selected" = "Delete Selected";
+"Confirm_Clear" = "Confirm Clear";
+"Clear_All_Message" = "Are you sure you want to clear all history? This cannot be undone.";
+"Clear" = "Clear";
+"Cancel" = "Cancel";
+"Cleared_All_History" = "Cleared all history";
+"取消" = "Cancel";
+"完成" = "Done";
+"批量管理" = "Manage";
+"暂无截图历史" = "No screenshot history";
+"已删除选中的记录" = "Deleted selected records";

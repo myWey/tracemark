@@ -50,7 +50,19 @@ translations = {
     "昨天": {"en": "Yesterday", "zh-Hans": "昨天", "zh-Hant": "昨天", "ja": "昨日", "ko": "어제"},
     "更早": {"en": "Earlier", "zh-Hans": "更早", "zh-Hant": "更早", "ja": "以前", "ko": "이전"},
     "历史记录": {"en": "History", "zh-Hans": "历史记录", "zh-Hant": "歷史記錄", "ja": "履歴", "ko": "기록"},
-    "偏好设置": {"en": "Preferences", "zh-Hans": "偏好设置", "zh-Hant": "偏好設定", "ja": "環境設定", "ko": "환경설정"}
+    "偏好设置": {"en": "Preferences", "zh-Hans": "偏好设置", "zh-Hant": "偏好設定", "ja": "環境設定", "ko": "환경설정"},
+    "Clear_All": {"en": "Clear All", "zh-Hans": "全部清空", "zh-Hant": "全部清空", "ja": "すべてクリア", "ko": "모두 지우기"},
+    "Delete_Selected": {"en": "Delete Selected", "zh-Hans": "删除已选", "zh-Hant": "刪除已選", "ja": "選択を削除", "ko": "선택 삭제"},
+    "Confirm_Clear": {"en": "Confirm Clear", "zh-Hans": "确认清空", "zh-Hant": "確認清空", "ja": "クリアの確認", "ko": "지우기 확인"},
+    "Clear_All_Message": {"en": "Are you sure you want to clear all history? This cannot be undone.", "zh-Hans": "您确定要清空所有历史记录吗？此操作不可撤销。", "zh-Hant": "您確定要清空所有歷史記錄嗎？此操作不可撤銷。", "ja": "すべての履歴をクリアしてもよろしいですか？この操作は取り消せません。", "ko": "모든 기록을 지우시겠습니까? 이 작업은 취소할 수 없습니다."},
+    "Clear": {"en": "Clear", "zh-Hans": "清空", "zh-Hant": "清空", "ja": "クリア", "ko": "지우기"},
+    "Cancel": {"en": "Cancel", "zh-Hans": "取消", "zh-Hant": "取消", "ja": "キャンセル", "ko": "취소"},
+    "取消": {"en": "Cancel", "zh-Hans": "取消", "zh-Hant": "取消", "ja": "キャンセル", "ko": "취소"},
+    "完成": {"en": "Done", "zh-Hans": "完成", "zh-Hant": "完成", "ja": "完了", "ko": "완료"},
+    "批量管理": {"en": "Manage", "zh-Hans": "批量管理", "zh-Hant": "批次管理", "ja": "管理", "ko": "관리"},
+    "暂无截图历史": {"en": "No screenshot history", "zh-Hans": "暂无截图历史", "zh-Hant": "暫無截圖歷史", "ja": "スクリーンショットの履歴がありません", "ko": "스크린샷 기록 없음"},
+    "已删除选中的记录": {"en": "Deleted selected records", "zh-Hans": "已删除选中的记录", "zh-Hant": "已刪除選中的記錄", "ja": "選択した記録を削除しました", "ko": "선택한 기록 삭제됨"},
+    "Cleared_All_History": {"en": "Cleared all history", "zh-Hans": "已清空所有历史记录", "zh-Hant": "已清空所有歷史記錄", "ja": "すべての履歴をクリアしました", "ko": "모든 기록 지움"}
 }
 
 for lang in langs:

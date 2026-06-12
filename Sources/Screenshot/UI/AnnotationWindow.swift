@@ -44,14 +44,14 @@ public class AnnotationManager {
         let scaleFactor = screen.backingScaleFactor
         
         // 计算图片在屏幕上的最佳展示尺寸（留出一定边距）
-        let maxWidth = screenFrame.width * 0.8
-        let maxHeight = screenFrame.height * 0.8
+        _ = screenFrame.width * 0.8
+        _ = screenFrame.height * 0.8
         let imageWidth = CGFloat(image.width) / scaleFactor
         let imageHeight = CGFloat(image.height) / scaleFactor
         
-        // 加上工具栏所需的额外高度 (例如 60pt)，且宽度不小于工具栏宽度 (720pt)
-        let windowWidth = max(imageWidth, 720)
-        let windowHeight = imageHeight + 60
+        // 加上工具栏所需的额外高度 (预留 120pt 给多行工具栏和边距)，且宽度不小于工具栏最低要求宽度
+        let windowWidth = max(imageWidth, 740)
+        let windowHeight = imageHeight + 120
         
         let x = screenFrame.midX - windowWidth / 2
         let y = screenFrame.midY - windowHeight / 2

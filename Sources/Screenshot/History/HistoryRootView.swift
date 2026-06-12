@@ -1,8 +1,9 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 public struct HistoryGroup: Identifiable {
-    public let id = UUID()
+    public var id: String { title }
     public let title: String
     public let records: [ScreenshotRecord]
 }
@@ -41,6 +42,30 @@ public class DashboardRouter: ObservableObject {
     @Published public var selectedTab: DashboardRootView.DashboardTab? = .history
 }
 
+struct SidebarButton: View {
+    let title: String
+    let icon: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Image(systemName: icon)
+                    .frame(width: 20)
+                Text(title)
+                Spacer()
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(isSelected ? Color.blue.opacity(0.1) : Color.clear)
+            .foregroundColor(isSelected ? .blue : .primary)
+            .cornerRadius(8)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
 public struct DashboardRootView: View {
     @ObservedObject public var router = DashboardRouter.shared
     
@@ -52,20 +77,32 @@ public struct DashboardRootView: View {
     public init() {}
     
     public var body: some View {
-        NavigationView {
-            List(selection: $router.selectedTab) {
-                NavigationLink(destination: HistoryContentView(), tag: DashboardTab.history, selection: $router.selectedTab) {
-                    Label(LanguageManager.shared.localizedString(forKey: "历史记录"), systemImage: "clock")
+        HStack(spacing: 0) {
+            // Sidebar
+            VStack(alignment: .leading, spacing: 8) {
+                SidebarButton(title: LanguageManager.shared.localizedString(forKey: "历史记录"), icon: "clock", isSelected: router.selectedTab == .history || router.selectedTab == .none) {
+                    router.selectedTab = .history
                 }
-                NavigationLink(destination: PreferencesView(), tag: DashboardTab.preferences, selection: $router.selectedTab) {
-                    Label(LanguageManager.shared.localizedString(forKey: "偏好设置"), systemImage: "gear")
+                SidebarButton(title: LanguageManager.shared.localizedString(forKey: "偏好设置"), icon: "gear", isSelected: router.selectedTab == .preferences) {
+                    router.selectedTab = .preferences
+                }
+                Spacer()
+            }
+            .padding(.top, 20)
+            .padding(.horizontal, 10)
+            .frame(width: 160)
+            .background(Color(NSColor.controlBackgroundColor))
+            
+            // Detail
+            ZStack {
+                Color(NSColor.windowBackgroundColor)
+                    .ignoresSafeArea()
+                if router.selectedTab == .history || router.selectedTab == .none {
+                    HistoryContentView()
+                } else if router.selectedTab == .preferences {
+                    PreferencesView()
                 }
             }
-            .listStyle(SidebarListStyle())
-            .frame(minWidth: 150)
-            
-            // Default view for large screens
-            HistoryContentView()
         }
         .frame(minWidth: 850, minHeight: 500)
     }
@@ -73,6 +110,7 @@ public struct DashboardRootView: View {
 
 public struct HistoryContentView: View {
     @ObservedObject var viewModel = HistoryViewModel()
+    @State private var showingClearAlert = false
     
     public init() {}
     
@@ -84,76 +122,151 @@ public struct HistoryContentView: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("历史记录")
+                Text(LanguageManager.shared.localizedString(forKey: "历史记录"))
                     .font(.title2)
                     .fontWeight(.bold)
                 Spacer()
+                
+                Button(LanguageManager.shared.localizedString(forKey: viewModel.isManageMode ? "完成" : "批量管理")) {
+                    withAnimation {
+                        viewModel.isManageMode.toggle()
+                        if !viewModel.isManageMode {
+                            viewModel.selectedRecords.removeAll()
+                        }
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+                .foregroundColor(.blue)
+                
                 Button(action: {
                     viewModel.loadRecords()
                 }) {
                     Image(systemName: "arrow.clockwise")
                 }
                 .buttonStyle(PlainButtonStyle())
+                .padding(.leading, 8)
             }
             .padding()
             .background(Color(NSColor.windowBackgroundColor))
             
             Divider()
             
-            // Timeline Scroll
-            if viewModel.records.isEmpty {
-                VStack {
-                    Spacer()
-                    Image(systemName: "photo.on.rectangle.angled")
-                        .font(.system(size: 48))
-                        .foregroundColor(.gray)
-                        .padding(.bottom, 8)
-                    Text("暂无截图历史")
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        ForEach(groups) { group in
-                            HStack(alignment: .top, spacing: 16) {
-                                // 左侧时间轴节点与连线
-                                VStack(spacing: 0) {
-                                    Circle()
-                                        .fill(Color.blue)
-                                        .frame(width: 10, height: 10)
-                                        .background(
-                                            Circle()
-                                                .stroke(Color.blue.opacity(0.3), lineWidth: 4)
-                                        )
-                                        .padding(.top, 6)
+            ZStack(alignment: .bottom) {
+                if viewModel.records.isEmpty {
+                    VStack {
+                        Spacer()
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 48))
+                            .foregroundColor(.gray)
+                            .padding(.bottom, 8)
+                        Text(LanguageManager.shared.localizedString(forKey: "暂无截图历史"))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 24) {
+                            ForEach(groups) { group in
+                                HStack(alignment: .top, spacing: 16) {
+                                    VStack(spacing: 0) {
+                                        Circle()
+                                            .fill(Color.blue)
+                                            .frame(width: 10, height: 10)
+                                            .background(
+                                                Circle()
+                                                    .stroke(Color.blue.opacity(0.3), lineWidth: 4)
+                                            )
+                                            .padding(.top, 6)
+                                        
+                                        Rectangle()
+                                            .fill(Color.gray.opacity(0.2))
+                                            .frame(width: 2)
+                                    }
+                                    .frame(width: 24)
                                     
-                                    Rectangle()
-                                        .fill(Color.gray.opacity(0.2))
-                                        .frame(width: 2)
-                                }
-                                .frame(width: 24)
-                                
-                                // 右侧内容：组标题与卡片网格
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Text(group.title)
-                                        .font(.headline)
-                                        .foregroundColor(.secondary)
-                                    
-                                    let columns = [
-                                        GridItem(.adaptive(minimum: 300, maximum: 340), spacing: 16)
-                                    ]
-                                    LazyVGrid(columns: columns, spacing: 16) {
-                                        ForEach(group.records) { record in
-                                            HistoryItemView(record: record, viewModel: viewModel)
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        Text(group.title)
+                                            .font(.headline)
+                                            .foregroundColor(.secondary)
+                                        
+                                        let columns = [
+                                            GridItem(.adaptive(minimum: 160, maximum: 160), spacing: 20)
+                                        ]
+                                        LazyVGrid(columns: columns, spacing: 20) {
+                                            ForEach(group.records) { record in
+                                                HistoryItemView(record: record, viewModel: viewModel)
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
+                        .padding()
+                        .padding(.bottom, viewModel.isManageMode ? 80 : 0)
+                    }
+                }
+                
+                if viewModel.isManageMode {
+                    HStack(spacing: 16) {
+                        Button(LanguageManager.shared.localizedString(forKey: "取消")) {
+                            withAnimation {
+                                viewModel.isManageMode = false
+                                viewModel.selectedRecords.removeAll()
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(6)
+                        
+                        Button(LanguageManager.shared.localizedString(forKey: "Clear_All")) {
+                            showingClearAlert = true
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .foregroundColor(.red)
+                        .cornerRadius(6)
+                        
+                        Button(LanguageManager.shared.localizedString(forKey: "Delete_Selected")) {
+                            for id in viewModel.selectedRecords {
+                                HistoryManager.shared.removeRecord(id: id)
+                            }
+                            viewModel.selectedRecords.removeAll()
+                            viewModel.isManageMode = false
+                            ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: "已删除选中的记录"))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(viewModel.selectedRecords.isEmpty ? Color.gray.opacity(0.3) : Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(6)
+                        .disabled(viewModel.selectedRecords.isEmpty)
                     }
                     .padding()
+                    .background(Color(NSColor.windowBackgroundColor))
+                    .shadow(radius: 5)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .alert(isPresented: $showingClearAlert) {
+                        Alert(
+                            title: Text(LanguageManager.shared.localizedString(forKey: "Confirm_Clear")),
+                            message: Text(LanguageManager.shared.localizedString(forKey: "Clear_All_Message")),
+                            primaryButton: .destructive(Text(LanguageManager.shared.localizedString(forKey: "Clear"))) {
+                                for record in viewModel.records {
+                                    HistoryManager.shared.removeRecord(id: record.id)
+                                }
+                                viewModel.selectedRecords.removeAll()
+                                viewModel.isManageMode = false
+                                ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: "Cleared_All_History"))
+                            },
+                            secondaryButton: .cancel(Text(LanguageManager.shared.localizedString(forKey: "Cancel")))
+                        )
+                    }
+                    .padding(.bottom, 20)
                 }
             }
         }
@@ -163,6 +276,8 @@ public struct HistoryContentView: View {
 
 class HistoryViewModel: ObservableObject {
     @Published var records: [ScreenshotRecord] = []
+    @Published var isManageMode: Bool = false
+    @Published var selectedRecords: Set<UUID> = []
     
     init() {
         loadRecords()
@@ -175,22 +290,46 @@ class HistoryViewModel: ObservableObject {
     
     func loadRecords() {
         self.records = HistoryManager.shared.records
+        let existingIds = Set(records.map { $0.id })
+        selectedRecords.formIntersection(existingIds)
+        if records.isEmpty {
+            isManageMode = false
+        }
     }
     
     func deleteRecord(_ id: UUID) {
         HistoryManager.shared.removeRecord(id: id)
     }
+    
+    func clearAll() {
+        records.forEach { HistoryManager.shared.removeRecord(id: $0.id) }
+        selectedRecords.removeAll()
+        isManageMode = false
+    }
+    
+    func deleteSelected() {
+        selectedRecords.forEach { HistoryManager.shared.removeRecord(id: $0) }
+        selectedRecords.removeAll()
+        isManageMode = false
+    }
+    
+    func toggleSelection(_ id: UUID) {
+        if selectedRecords.contains(id) {
+            selectedRecords.remove(id)
+        } else {
+            selectedRecords.insert(id)
+        }
+    }
 }
 
 struct HistoryItemView: View {
     let record: ScreenshotRecord
-    let viewModel: HistoryViewModel
+    @ObservedObject var viewModel: HistoryViewModel
     @State private var image: NSImage?
     @State private var isHovering = false
     
     var body: some View {
-        HStack(spacing: 16) {
-            // Thumbnail container
+        VStack(alignment: .leading, spacing: 8) {
             ZStack {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color(NSColor.controlBackgroundColor))
@@ -203,18 +342,25 @@ struct HistoryItemView: View {
                         .frame(width: 160, height: 90)
                         .cornerRadius(6)
                         .clipped()
+                        .onDrag {
+                            let url = HistoryManager.shared.getSavedImageURL(for: record)
+                            let provider = NSItemProvider()
+                            provider.registerFileRepresentation(forTypeIdentifier: UTType.png.identifier, fileOptions: [.openInPlace], visibility: .all) { completion in
+                                completion(url, true, nil)
+                                return nil
+                            }
+                            return provider
+                        }
                 } else {
                     ProgressView()
                 }
                 
-                // Hover overlay
-                if isHovering {
+                if isHovering && !viewModel.isManageMode {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(Color.black.opacity(0.5))
                         .frame(width: 160, height: 90)
                     
                     HStack(spacing: 8) {
-                        // Copy
                         Button(action: copyToClipboard) {
                             Image(systemName: "doc.on.doc")
                                 .font(.system(size: 11, weight: .medium))
@@ -226,7 +372,6 @@ struct HistoryItemView: View {
                         .buttonStyle(PlainButtonStyle())
                         .help("复制到剪贴板")
                         
-                        // Finder
                         Button(action: showInFinder) {
                             Image(systemName: "folder")
                                 .font(.system(size: 11, weight: .medium))
@@ -238,7 +383,6 @@ struct HistoryItemView: View {
                         .buttonStyle(PlainButtonStyle())
                         .help("在 Finder 中显示")
                         
-                        // Pin
                         Button(action: pinRecord) {
                             Image(systemName: "pin")
                                 .font(.system(size: 11, weight: .medium))
@@ -250,7 +394,6 @@ struct HistoryItemView: View {
                         .buttonStyle(PlainButtonStyle())
                         .help("贴图置顶")
                         
-                        // Re-edit
                         Button(action: reEditRecord) {
                             Image(systemName: "pencil")
                                 .font(.system(size: 11, weight: .medium))
@@ -263,39 +406,70 @@ struct HistoryItemView: View {
                         .help("重新编辑标注")
                     }
                 }
+                
+                if viewModel.isManageMode {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(viewModel.selectedRecords.contains(record.id) ? Color.blue.opacity(0.3) : Color.black.opacity(0.1))
+                        .frame(width: 160, height: 90)
+                    
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Image(systemName: viewModel.selectedRecords.contains(record.id) ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 20))
+                                .foregroundColor(viewModel.selectedRecords.contains(record.id) ? .white : .white.opacity(0.8))
+                                .background(Circle().fill(viewModel.selectedRecords.contains(record.id) ? Color.blue : Color.black.opacity(0.3)))
+                                .padding(8)
+                        }
+                        Spacer()
+                    }
+                }
             }
+            .contentShape(Rectangle())
             .onHover { hover in
                 withAnimation(.easeInOut(duration: 0.15)) {
                     isHovering = hover
                 }
             }
+            .onTapGesture {
+                if viewModel.isManageMode {
+                    viewModel.toggleSelection(record.id)
+                }
+            }
             
-            // Text Details & Actions
-            VStack(alignment: .leading, spacing: 6) {
-                Text(formatDate(record.timestamp))
-                    .font(.system(size: 13, weight: .medium))
-                
-                Text(formatFileSize(record.fileSize))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(formatDate(record.timestamp))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.primary)
+                    
+                    Text(formatFileSize(record.fileSize))
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
                 
                 Spacer()
                 
-                if isHovering {
+                if !viewModel.isManageMode {
                     Button(action: {
                         viewModel.deleteRecord(record.id)
                     }) {
-                        Label("删除", systemImage: "trash")
-                            .font(.caption)
-                            .foregroundColor(.red)
+                        Image(systemName: "trash")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .padding(6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(isHovering ? Color.red.opacity(0.1) : Color.clear)
+                            )
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .foregroundColor(isHovering ? .red : .secondary)
+                    .help("删除")
                 }
             }
-            .frame(height: 90)
-            
-            Spacer()
         }
+        .frame(width: 160)
         .padding(.vertical, 4)
         .onAppear {
             loadImage()
@@ -371,4 +545,3 @@ struct HistoryItemView: View {
         )
     }
 }
-

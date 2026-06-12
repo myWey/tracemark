@@ -2,16 +2,14 @@ import SwiftUI
 
 public enum TextStyle: String, CaseIterable, Codable {
     case standard = "Standard"
-    case rounded = "Rounded"
-    case monospaced = "Monospaced"
     case outlined = "Outlined"
     case boxed = "Boxed"
     case roundedBoxed = "Rounded Boxed"
-    case monospacedBoxed = "Monospaced Boxed"
 }
 
-public enum DragHandle: CaseIterable {
+public enum DragHandle: CaseIterable, Equatable {
     case topLeft, top, topRight, right, bottomRight, bottom, bottomLeft, left
+    case calloutOrigin // 专门用于 NumberedText 移动圆圈锚点
 }
 
 public func handlePosition(for handle: DragHandle, rect: CGRect) -> CGPoint {
@@ -24,6 +22,7 @@ public func handlePosition(for handle: DragHandle, rect: CGRect) -> CGPoint {
     case .bottom: return CGPoint(x: rect.midX, y: rect.maxY)
     case .bottomLeft: return CGPoint(x: rect.minX, y: rect.maxY)
     case .left: return CGPoint(x: rect.minX, y: rect.midY)
+    case .calloutOrigin: return .zero
     }
 }
 
@@ -57,6 +56,7 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
     public var startPoint: CGPoint
     public var endPoint: CGPoint
     public var points: [CGPoint]? // 自由画笔点集
+    public var calloutOffset: CGSize? // 针对 Numbered Text 的独立避让控制偏移量
     
     // 样式数据
     public var color: Color
@@ -71,18 +71,20 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
     public var counterValue: Int?
     
     public init(
+        id: UUID = UUID(),
         type: AnnotationToolType,
         startPoint: CGPoint,
         endPoint: CGPoint = .zero,
         points: [CGPoint]? = nil,
         color: Color = .red,
         lineWidth: CGFloat = 3.0,
-        text: String? = nil,
+        text: String = "",
         fontStyle: TextStyle? = nil,
         fontSize: CGFloat? = nil,
-        counterValue: Int? = nil
+        counterValue: Int? = nil,
+        calloutOffset: CGSize? = nil
     ) {
-        self.id = UUID()
+        self.id = id
         self.type = type
         self.startPoint = startPoint
         self.endPoint = endPoint
@@ -93,6 +95,7 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
         self.fontStyle = fontStyle
         self.fontSize = fontSize
         self.counterValue = counterValue
+        self.calloutOffset = calloutOffset
     }
     
     public var isFreehandTool: Bool {
@@ -108,6 +111,26 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
                 y: endPoint.y - size / 2,
                 width: size,
                 height: size
+            )
+        }
+        if type == .numberedText {
+            // Numbered text box bounds based on callout offset
+            let origin = CGPoint(x: startPoint.x + (calloutOffset?.width ?? 15.0),
+                                 y: startPoint.y + (calloutOffset?.height ?? -60.0))
+            return CGRect(
+                x: min(origin.x, endPoint.x),
+                y: min(origin.y, endPoint.y),
+                width: abs(origin.x - endPoint.x),
+                height: abs(origin.y - endPoint.y)
+            )
+        }
+        
+        if type == .text {
+            return CGRect(
+                x: min(startPoint.x, endPoint.x),
+                y: min(startPoint.y, endPoint.y),
+                width: abs(startPoint.x - endPoint.x),
+                height: abs(startPoint.y - endPoint.y)
             )
         }
         
@@ -148,10 +171,18 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
             )
         }
         
-        startPoint = mapPoint(startPoint)
-        endPoint = mapPoint(endPoint)
-        if let pts = points {
-            points = pts.map(mapPoint)
+        if type == .numberedText {
+            // ONLY resize the endPoint/text box bounds. The circle remains at startPoint!
+            let origin = CGPoint(x: startPoint.x + (calloutOffset?.width ?? 70), y: startPoint.y + (calloutOffset?.height ?? -70))
+            let mappedOrigin = mapPoint(origin)
+            endPoint = mapPoint(endPoint)
+            calloutOffset = CGSize(width: mappedOrigin.x - startPoint.x, height: mappedOrigin.y - startPoint.y)
+        } else {
+            startPoint = mapPoint(startPoint)
+            endPoint = mapPoint(endPoint)
+            if let pts = points {
+                points = pts.map(mapPoint)
+            }
         }
     }
     
