@@ -1,0 +1,68 @@
+{
+  "": {
+    "swift-dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/primary.swiftdeps"
+  },
+  "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Annotation/AnnotationModels.swift": {
+    "dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationModels.d",
+    "object": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationModels.swift.o",
+    "swiftmodule": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationModels~partial.swiftmodule",
+    "swift-dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationModels.swiftdeps",
+    "diagnostics": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationModels.dia"
+  },
+  "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/App.swift": {
+    "dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/App.d",
+    "object": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/App.swift.o",
+    "swiftmodule": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/App~partial.swiftmodule",
+    "swift-dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/App.swiftdeps",
+    "diagnostics": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/App.dia"
+  },
+  "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Capture/CaptureEngine.swift": {
+    "dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/CaptureEngine.d",
+    "object": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/CaptureEngine.swift.o",
+    "swiftmodule": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/CaptureEngine~partial.swiftmodule",
+    "swift-dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/CaptureEngine.swiftdeps",
+    "diagnostics": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/CaptureEngine.dia"
+  },
+  "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Hotkey/HotkeyManager.swift": {
+    "dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/HotkeyManager.d",
+    "object": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/HotkeyManager.swift.o",
+    "swiftmodule": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/HotkeyManager~partial.swiftmodule",
+    "swift-dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/HotkeyManager.swiftdeps",
+    "diagnostics": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/HotkeyManager.dia"
+  },
+  "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/AnnotationRootView.swift": {
+    "dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationRootView.d",
+    "object": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationRootView.swift.o",
+    "swiftmodule": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationRootView~partial.swiftmodule",
+    "swift-dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationRootView.swiftdeps",
+    "diagnostics": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationRootView.dia"
+  },
+  "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/AnnotationWindow.swift": {
+    "dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationWindow.d",
+    "object": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationWindow.swift.o",
+    "swiftmodule": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationWindow~partial.swiftmodule",
+    "swift-dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationWindow.swiftdeps",
+    "diagnostics": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationWindow.dia"
+  },
+  "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/OverlayWindow.swift": {
+    "dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/OverlayWindow.d",
+    "object": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/OverlayWindow.swift.o",
+    "swiftmodule": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/OverlayWindow~partial.swiftmodule",
+    "swift-dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/OverlayWindow.swiftdeps",
+    "diagnostics": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/OverlayWindow.dia"
+  },
+  "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/ThumbnailWindow.swift": {
+    "dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/ThumbnailWindow.d",
+    "object": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/ThumbnailWindow.swift.o",
+    "swiftmodule": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/ThumbnailWindow~partial.swiftmodule",
+    "swift-dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/ThumbnailWindow.swiftdeps",
+    "diagnostics": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/ThumbnailWindow.dia"
+  },
+  "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/main.swift": {
+    "dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/main.d",
+    "object": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/main.swift.o",
+    "swiftmodule": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/main.swiftdeps",
+    "diagnostics": "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/main.dia"
+  }
+}

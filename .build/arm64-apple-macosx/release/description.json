@@ -1,0 +1,677 @@
+{
+  "builtTestProducts" : [
+
+  ],
+  "copyCommands" : {
+    "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark_TraceMark.bundle/Assets.xcassets" : {
+      "inputs" : [
+        {
+          "kind" : "directory",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Assets.xcassets"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "directory",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark_TraceMark.bundle/Assets.xcassets"
+        }
+      ]
+    },
+    "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark_TraceMark.bundle/Info.plist" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/Info.plist"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark_TraceMark.bundle/Info.plist"
+        }
+      ]
+    },
+    "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark_TraceMark.bundle/en.lproj/Localizable.strings" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Resources/en.lproj/Localizable.strings"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark_TraceMark.bundle/en.lproj/Localizable.strings"
+        }
+      ]
+    },
+    "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark_TraceMark.bundle/ja.lproj/Localizable.strings" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Resources/ja.lproj/Localizable.strings"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark_TraceMark.bundle/ja.lproj/Localizable.strings"
+        }
+      ]
+    },
+    "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark_TraceMark.bundle/ko.lproj/Localizable.strings" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Resources/ko.lproj/Localizable.strings"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark_TraceMark.bundle/ko.lproj/Localizable.strings"
+        }
+      ]
+    },
+    "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark_TraceMark.bundle/zh-hans.lproj/Localizable.strings" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Resources/zh-Hans.lproj/Localizable.strings"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark_TraceMark.bundle/zh-hans.lproj/Localizable.strings"
+        }
+      ]
+    },
+    "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark_TraceMark.bundle/zh-hant.lproj/Localizable.strings" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Resources/zh-Hant.lproj/Localizable.strings"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark_TraceMark.bundle/zh-hant.lproj/Localizable.strings"
+        }
+      ]
+    }
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.TraceMark-arm64-apple-macosx-release.module" : {
+      "executable" : "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "fileList" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/sources",
+      "importPath" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Annotation/AnnotationModels.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/App.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Capture/CaptureEngine.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Capture/TextRecognitionService.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/History/HistoryManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/History/HistoryRootView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/History/HistoryWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Hotkey/HotkeyManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/AnnotationRootView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/AnnotationWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/ImageEffectView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/LanguageManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/OCRResultPanel.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/OverlayWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/PinWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/PreferencesView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/SVGPathParser.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/ThumbnailWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/main.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/DerivedSources/resource_bundle_accessor.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt"
+        },
+        {
+          "kind" : "virtual",
+          "name" : "<TraceMark-arm64-apple-macosx-release.module-resources>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/sources"
+        }
+      ],
+      "isLibrary" : false,
+      "moduleName" : "TraceMark",
+      "moduleOutputPath" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/Modules/TraceMark.swiftmodule",
+      "objects" : [
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/AnnotationModels.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/App.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/CaptureEngine.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/TextRecognitionService.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/HistoryManager.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/HistoryRootView.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/HistoryWindow.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/HotkeyManager.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/AnnotationRootView.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/AnnotationWindow.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/ImageEffectView.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/LanguageManager.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/OCRResultPanel.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/OverlayWindow.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/PinWindow.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/PreferencesView.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/SVGPathParser.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/ThumbnailWindow.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/main.swift.o",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/resource_bundle_accessor.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx13.0",
+        "-whole-module-optimization",
+        "-num-threads",
+        "8",
+        "-serialize-diagnostics",
+        "-O",
+        "-j8",
+        "-DSWIFT_PACKAGE",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_AVAILABLE",
+        "-module-cache-path",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/ModuleCache",
+        "-parseable-output",
+        "-Xfrontend",
+        "-entry-point-function-name",
+        "-Xfrontend",
+        "TraceMark_main",
+        "-color-diagnostics",
+        "-swift-version",
+        "5",
+        "-I",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-L",
+        "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+        "-plugin-path",
+        "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g"
+      ],
+      "outputFileMapPath" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/AnnotationModels.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/App.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/CaptureEngine.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/TextRecognitionService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/HistoryManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/HistoryRootView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/HistoryWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/HotkeyManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/AnnotationRootView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/AnnotationWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/ImageEffectView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/LanguageManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/OCRResultPanel.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/OverlayWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/PinWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/PreferencesView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/SVGPathParser.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/ThumbnailWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/main.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/resource_bundle_accessor.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/Modules/TraceMark.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Annotation/AnnotationModels.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/App.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Capture/CaptureEngine.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Capture/TextRecognitionService.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/History/HistoryManager.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/History/HistoryRootView.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/History/HistoryWindow.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Hotkey/HotkeyManager.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/AnnotationRootView.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/AnnotationWindow.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/ImageEffectView.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/LanguageManager.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/OCRResultPanel.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/OverlayWindow.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/PinWindow.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/PreferencesView.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/SVGPathParser.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/ThumbnailWindow.swift",
+        "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/main.swift",
+        "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/DerivedSources/resource_bundle_accessor.swift"
+      ],
+      "tempsPath" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build",
+      "wholeModuleOptimization" : true
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "TraceMark" : [
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc",
+      "-module-name",
+      "TraceMark",
+      "-c",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Annotation/AnnotationModels.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/App.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Capture/CaptureEngine.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Capture/TextRecognitionService.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/History/HistoryManager.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/History/HistoryRootView.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/History/HistoryWindow.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Hotkey/HotkeyManager.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/AnnotationRootView.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/AnnotationWindow.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/ImageEffectView.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/LanguageManager.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/OCRResultPanel.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/OverlayWindow.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/PinWindow.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/PreferencesView.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/SVGPathParser.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/ThumbnailWindow.swift",
+      "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/main.swift",
+      "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/DerivedSources/resource_bundle_accessor.swift",
+      "-I",
+      "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/Modules",
+      "-target",
+      "arm64-apple-macosx13.0",
+      "-whole-module-optimization",
+      "-num-threads",
+      "8",
+      "-serialize-diagnostics",
+      "-O",
+      "-j8",
+      "-DSWIFT_PACKAGE",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_AVAILABLE",
+      "-module-cache-path",
+      "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/ModuleCache",
+      "-parseable-output",
+      "-Xfrontend",
+      "-entry-point-function-name",
+      "-Xfrontend",
+      "TraceMark_main",
+      "-color-diagnostics",
+      "-swift-version",
+      "5",
+      "-I",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-L",
+      "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+      "-plugin-path",
+      "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-driver-use-frontend-path",
+      "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "TraceMark" : [
+
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+
+  },
+  "traitConfiguration" : {
+    "default" : {
+
+    }
+  },
+  "writeCommands" : {
+    "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Annotation/AnnotationModels.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/App.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Capture/CaptureEngine.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Capture/TextRecognitionService.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/History/HistoryManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/History/HistoryRootView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/History/HistoryWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Hotkey/HotkeyManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/AnnotationRootView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/AnnotationWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/ImageEffectView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/LanguageManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/OCRResultPanel.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/OverlayWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/PinWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/PreferencesView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/SVGPathParser.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/ThumbnailWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/main.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/DerivedSources/resource_bundle_accessor.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/sources"
+    },
+    "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/AnnotationModels.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/AnnotationRootView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/AnnotationWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/App.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/CaptureEngine.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/HistoryManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/HistoryRootView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/HistoryWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/HotkeyManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/ImageEffectView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/LanguageManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/OCRResultPanel.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/OverlayWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/PinWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/PreferencesView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/SVGPathParser.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/TextRecognitionService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/ThumbnailWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/main.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.build/resource_bundle_accessor.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/TraceMark.product/Objects.LinkFileList"
+    },
+    "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Library/Developer/CommandLineTools/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt"
+    }
+  }
+}

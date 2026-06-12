@@ -1,0 +1,81 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "PackageStructure": ["<PackageStructure>"]
+  "Screenshot-arm64-apple-macosx-debug.exe": ["<Screenshot-arm64-apple-macosx-debug.exe>"]
+  "Screenshot-arm64-apple-macosx-debug.module": ["<Screenshot-arm64-apple-macosx-debug.module>"]
+  "main": ["<Screenshot-arm64-apple-macosx-debug.exe>","<Screenshot-arm64-apple-macosx-debug.module>"]
+  "test": ["<Screenshot-arm64-apple-macosx-debug.exe>","<Screenshot-arm64-apple-macosx-debug.module>"]
+default: "main"
+nodes:
+  "/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+  "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot":
+    is-mutated: true
+commands:
+  "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot-entitlement.plist":
+    tool: write-auxiliary-file
+    inputs: ["<entitlement-plist>","<com.apple.security.get-task-allow>"]
+    outputs: ["/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot-entitlement.plist"]
+    description: "Write auxiliary file /Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot-entitlement.plist"
+
+  "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Annotation/AnnotationModels.swift","/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/App.swift","/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Capture/CaptureEngine.swift","/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Hotkey/HotkeyManager.swift","/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/AnnotationRootView.swift","/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/AnnotationWindow.swift","/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/OverlayWindow.swift","/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/ThumbnailWindow.swift","/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/main.swift"]
+    outputs: ["/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/sources"]
+    description: "Write auxiliary file /Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/sources"
+
+  "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationModels.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationRootView.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationWindow.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/App.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/CaptureEngine.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/HotkeyManager.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/OverlayWindow.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/ThumbnailWindow.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/main.swift.o"]
+    outputs: ["/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.product/Objects.LinkFileList"
+
+  "/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Library/Developer/CommandLineTools/usr/bin/swiftc"]
+    outputs: ["/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+
+  "<Screenshot-arm64-apple-macosx-debug.exe>":
+    tool: phony
+    inputs: ["<Screenshot-arm64-apple-macosx-debug.exe-CodeSigning>"]
+    outputs: ["<Screenshot-arm64-apple-macosx-debug.exe>"]
+
+  "<Screenshot-arm64-apple-macosx-debug.module>":
+    tool: phony
+    inputs: ["/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationModels.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/App.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/CaptureEngine.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/HotkeyManager.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationRootView.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationWindow.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/OverlayWindow.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/ThumbnailWindow.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/main.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Modules/Screenshot.swiftmodule"]
+    outputs: ["<Screenshot-arm64-apple-macosx-debug.module>"]
+
+  "C.Screenshot-arm64-apple-macosx-debug.exe":
+    tool: shell
+    inputs: ["/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationModels.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationRootView.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationWindow.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/App.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/CaptureEngine.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/HotkeyManager.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/OverlayWindow.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/ThumbnailWindow.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/main.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.product/Objects.LinkFileList"]
+    outputs: ["/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot"]
+    description: "Linking ./.build/arm64-apple-macosx/debug/Screenshot"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-L","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug","-o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot","-module-name","Screenshot","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-alias","-Xlinker","_Screenshot_main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.product/Objects.LinkFileList","-Xlinker","-rpath","-Xlinker","/Library/Developer/CommandLineTools/usr/lib/swift-6.2/macosx","-target","arm64-apple-macosx13.0","-Xlinker","-add_ast_path","-Xlinker","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Modules/Screenshot.swiftmodule","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g"]
+
+  "C.Screenshot-arm64-apple-macosx-debug.exe-entitlements":
+    tool: shell
+    inputs: ["/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot-entitlement.plist"]
+    outputs: ["<Screenshot-arm64-apple-macosx-debug.exe-CodeSigning>"]
+    description: "Applying debug entitlements to ./.build/arm64-apple-macosx/debug/Screenshot"
+    args: ["codesign","--force","--sign","-","--entitlements","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot-entitlement.plist","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot"]
+
+  "C.Screenshot-arm64-apple-macosx-debug.module":
+    tool: shell
+    inputs: ["/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Annotation/AnnotationModels.swift","/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/App.swift","/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Capture/CaptureEngine.swift","/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/Hotkey/HotkeyManager.swift","/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/AnnotationRootView.swift","/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/AnnotationWindow.swift","/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/OverlayWindow.swift","/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/UI/ThumbnailWindow.swift","/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/main.swift","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/sources"]
+    outputs: ["/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationModels.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/App.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/CaptureEngine.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/HotkeyManager.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationRootView.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/AnnotationWindow.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/OverlayWindow.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/ThumbnailWindow.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/main.swift.o","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Modules/Screenshot.swiftmodule"]
+    description: "Compiling Swift Module 'Screenshot' (9 sources)"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-module-name","Screenshot","-emit-dependencies","-emit-module","-emit-module-path","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Modules/Screenshot.swiftmodule","-output-file-map","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/output-file-map.json","-incremental","-c","@/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Screenshot.build/sources","-I","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx13.0","-incremental","-enable-batch-mode","-serialize-diagnostics","-index-store-path","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-j8","-DSWIFT_PACKAGE","-DDEBUG","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/zerohsueh/Gemini/screenshot/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","Screenshot_main","-color-diagnostics","-swift-version","5","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g","-Xcc","-isysroot","-Xcc","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-Xcc","-fPIC","-Xcc","-g"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/zerohsueh/Gemini/screenshot/Sources/Screenshot/","/Users/zerohsueh/Gemini/screenshot/Package.swift","/Users/zerohsueh/Gemini/screenshot/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+

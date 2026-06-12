@@ -1,0 +1,9 @@
+---
+description: Architecture map (loaded when working in apps/)
+globs:
+  - apps/**/*
+---
+
+@.agent/map/architecture.md
+@.agent/map/api-surface.md
+@.agent/map/component-tree.md

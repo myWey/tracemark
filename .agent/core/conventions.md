@@ -1,0 +1,95 @@
+---
+id: conventions
+status: template
+last-confirmed: null
+---
+
+# Code & Workflow Conventions
+
+> 项目无关的默认约定；bootstrap 时按实际情况裁剪/扩展。Agent 写代码必须遵循。
+
+## 语言约定（Language）
+
+- **叙事文档用中文**：philosophy、glossary 释义、ADR 正文、spec、handoff、
+  PR 描述、TODO 注释。
+- **结构字段用英文**：front-matter 的 keys 与 enum 值（`status: active`）、
+  表格列名、`findings` / `severity` / `verdict` 等机器解析的字段。
+- **代码/文件名/commit message 用英文**。conventional commits（`feat:`,
+  `fix:`...）。
+- **glossary 双语**：每个术语提供中文 + 英文规范名（用于 code 命名）。
+- **聊天回复用中文**，但保留 ULID、ADR-NNNN、commit hash、token 名等
+  原样标识符。
+
+## Naming
+
+- **Files**: kebab-case (`reset-password-form.tsx`).
+- **Types/Components**: PascalCase.
+- **Variables/functions**: camelCase.
+- **Constants**: SCREAMING_SNAKE_CASE only for genuinely immutable values.
+- **Domain terms**: must match `glossary.md` exactly. Don't translate.
+- **Booleans**: prefix with `is/has/should/can`. Avoid negatives (`isNotX`).
+
+## Files & modules
+
+- One default export per file when the file is named after that export.
+- Co-locate tests next to the unit (`foo.ts` ↔ `foo.test.ts`).
+- Co-locate stories next to UI components (`Button.tsx` ↔ `Button.stories.tsx`).
+- Index files only for public surfaces of a package.
+
+## Error handling
+
+- Throw only for programmer errors (invariant violations).
+- Return tagged-union results for expected failures (`{ ok: true, value } | { ok: false, error }`).
+- Never swallow errors silently. If suppressed, log and document why.
+
+## Comments
+
+- Comments explain **why**, not what. The code is the what.
+- Reference ADR IDs when behavior is non-obvious because of a decision:
+  `// see ADR-0007 for why we accept stale reads here`.
+- Mark TODOs with an owner and a tracking ID: `// TODO(@user): resolve in #123`.
+
+## Tests
+
+- Unit tests are deterministic.
+- Integration / e2e are isolated (own DB, own user).
+- Property-Based Tests live next to the unit, named `*.pbt.ts`.
+- Tests describe behavior, not implementation: `it("rejects empty email")`,
+  not `it("calls validator.email")`.
+
+## Layered front-end (if applicable)
+
+See `boundaries.md` for the layer rules. Summary:
+
+| Layer | Folder | May import from |
+|---|---|---|
+| 0. Tokens | `shared/tokens/` | — |
+| 1. Primitives | `packages/ui-primitives/` | tokens |
+| 2. Composites | `packages/ui-composites/` | tokens, primitives |
+| 3. Features | `packages/features-*/` | tokens, primitives, composites, schemas |
+| 4. Pages/routes | `apps/web/` | everything |
+
+## Commits & PRs
+
+- Conventional Commits (`feat:`, `fix:`, `chore:`, ...).
+- One PR ≈ one logical change. If a PR mixes feature + refactor + migration,
+  split it.
+- PR description references the spec (`spec: .kiro/specs/{name}`) and any
+  ADR (`adr: ADR-0007`).
+
+## Agent behaviour
+
+- Read before writing. Never blind-edit a file you have not read in this session.
+- Reuse before creating. Search for existing primitives/utilities first.
+- Confirm before destruction. Deleting files / dropping data / force-pushing
+  requires user confirmation.
+- Sub-agents are stateless. All persistence goes through files in `.agent/`,
+  never via "agent memory".
+
+## Antigravity Planning Mode (if applicable)
+
+When running in Antigravity IDE with Planning Mode activated:
+- `<appDataDir>/brain/<conversation-id>/implementation_plan.md` maps to Kiro Spec (Requirements & Design).
+- `task.md` maps to Kiro Tasks, serving as the developer's execution checklist.
+- `walkthrough.md` maps to Post-spec Walkthrough and validation summary.
+- You MUST use `scripts/antigravity-sync.sh` to backup/restore these local planning files to `.agent/sessions/{ulid}/antigravity/` during Handoff, Resume, and phase transitions.

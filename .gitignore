@@ -1,0 +1,18 @@
+# OS / editor
+.DS_Store
+*.log
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+
+# Local env
+.env
+.env.local
+
+# Sessions are local by default; commit selectively if desired
+# .agent/sessions/
+
+# Auto-generated maps may or may not be committed (team choice)
+# .agent/map/*.svg

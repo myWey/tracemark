@@ -1,0 +1,12 @@
+{
+  "name": "Post-task verify and sync",
+  "version": "1.0.0",
+  "description": "After a Kiro spec task completes, run verifier + regenerate map; if context is high, propose a handoff.",
+  "when": {
+    "type": "postTaskExecution"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "1) Call sub-agent verifier on the spec just executed (suites: unit, typecheck, lint; e2e/visual only if UI changed). 2) Run .agent/workflows/regenerate-map.md to refresh stale maps. 3) If your remaining context is < 30%, run .agent/workflows/write-handoff.md and tell me the quick-resume prompt."
+  }
+}

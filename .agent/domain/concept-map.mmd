@@ -1,0 +1,15 @@
+%% AgentOS — domain concept map
+%% Edit when entities change. Render with mermaid.
+%% Keep this small (< 20 nodes). If it grows beyond that, split by
+%% bounded context.
+
+erDiagram
+    USER ||--o{ SESSION : owns
+    USER {
+        string id
+        string email
+    }
+    SESSION {
+        string id
+        string user_id
+    }
