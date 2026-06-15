@@ -19,12 +19,25 @@ echo "========================================"
 echo "🚧 [build-app] 开始编译 Swift 可执行程序..."
 echo "========================================"
 
-# 1. 运行 swift build
-swift build -c release
+# 1. 运行 swift build 分别构建两种架构
+echo "🚧 正在编译 arm64 架构..."
+swift build -c release --arch arm64
 
-# 2. 确定编译生成的二进制文件路径
-# 通过按时间排序，确保获取最新编译出来的二进制文件，同时排除 checkouts 和 dSYM 目录
-BIN_PATH=$(find .build -type f -name "TraceMark" ! -path "*/checkouts/*" ! -path "*.dSYM/*" -print0 | xargs -0 ls -t 2>/dev/null | head -n 1 || true)
+echo "🚧 正在编译 x86_64 架构..."
+swift build -c release --arch x86_64
+
+# 2. 确定编译生成的二进制文件路径并使用 lipo 合并
+BIN_ARM64=$(find .build/arm64-apple-macosx -type f -name "TraceMark" ! -path "*/checkouts/*" ! -path "*.dSYM/*" -print0 | xargs -0 ls -t 2>/dev/null | head -n 1 || true)
+BIN_X86_64=$(find .build/x86_64-apple-macosx -type f -name "TraceMark" ! -path "*/checkouts/*" ! -path "*.dSYM/*" -print0 | xargs -0 ls -t 2>/dev/null | head -n 1 || true)
+
+if [ -z "${BIN_ARM64}" ] || [ -z "${BIN_X86_64}" ]; then
+    echo "❌ 错误: 找不到某一个架构的二进制文件。"
+    exit 1
+fi
+
+echo "🔄 正在使用 lipo 合并为通用二进制文件 (Universal Binary)..."
+lipo -create -output .build/TraceMark_universal "${BIN_ARM64}" "${BIN_X86_64}"
+BIN_PATH=".build/TraceMark_universal"
 
 if [ -z "${BIN_PATH}" ] || [ ! -f "${BIN_PATH}" ]; then
     echo "❌ 错误: 找不到编译生成的可执行二进制文件。"
@@ -48,15 +61,18 @@ mkdir -p "${RESOURCES_DIR}"
 echo "📦 正在复制二进制文件和 Info.plist..."
 cp "${BIN_PATH}" "${MACOS_DIR}/TraceMark"
 cp Info.plist "${APP_DIR}/Contents/Info.plist"
+if [ -f "AppIcon.icns" ]; then
+    cp AppIcon.icns "${RESOURCES_DIR}/"
+fi
 
 # 拷贝资源 bundle (如 Assets 和 lproj)
-BUNDLE_DIR=$(dirname "${BIN_PATH}")
-if [ -d "${BUNDLE_DIR}/TraceMark_TraceMark.bundle" ]; then
-    cp -R "${BUNDLE_DIR}/TraceMark_TraceMark.bundle/"* "${RESOURCES_DIR}/"
-elif [ -d "${BUNDLE_DIR}/TraceMark_Screenshot.bundle" ]; then
-    cp -R "${BUNDLE_DIR}/TraceMark_Screenshot.bundle/"* "${RESOURCES_DIR}/"
-elif [ -d "${BUNDLE_DIR}/Screenshot_Screenshot.bundle" ]; then
-    cp -R "${BUNDLE_DIR}/Screenshot_Screenshot.bundle/"* "${RESOURCES_DIR}/"
+# Find the bundle inside the specific architecture release folder instead of the universal binary folder
+BUNDLE_PATH=$(find .build -type d -name "*.bundle" | grep -E "(TraceMark_TraceMark|TraceMark_Screenshot|Screenshot_Screenshot)\.bundle" | head -n 1 || true)
+if [ -n "${BUNDLE_PATH}" ] && [ -d "${BUNDLE_PATH}" ]; then
+    echo "📦 找到资源 Bundle: ${BUNDLE_PATH}"
+    cp -R "${BUNDLE_PATH}/"* "${RESOURCES_DIR}/"
+else
+    echo "⚠️ 警告: 未找到资源 Bundle，图标或多语言可能失效。"
 fi
 
 # 5. 给整个 .app 进行 ad-hoc 签名（防止 macOS 录屏权限等安全机制失效）
@@ -67,12 +83,6 @@ echo "========================================"
 echo "🎉 [build-app] 打包成功!"
 echo "📍 本地路径: ${PROJECT_ROOT}/${APP_DIR}"
 
-# 6. 将应用安装到 ~/Applications 以解决 TCC 权限死循环和路径缓存问题
-USER_APPS_DIR="${HOME}/Applications"
-echo "📦 正在安装到 ${USER_APPS_DIR} 以获取稳定的 macOS 权限..."
-mkdir -p "${USER_APPS_DIR}"
-rm -rf "${USER_APPS_DIR}/TraceMark.app"
-cp -R "${APP_DIR}" "${USER_APPS_DIR}/TraceMark.app"
-
-echo "📍 安装路径: ${USER_APPS_DIR}/TraceMark.app"
+# 6. 打包完成
+echo "✅ 请使用 dmg 安装包或手动将 TraceMark.app 移入应用程序文件夹中。"
 echo "========================================"

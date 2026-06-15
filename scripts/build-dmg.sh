@@ -16,12 +16,15 @@ if [ -f "$DMG_PATH" ]; then
     rm "$DMG_PATH"
 fi
 
+echo "🖼️ 正在生成全新的 DMG 背景图片..."
+swift scripts/generate-dmg-bg.swift
+
 echo "💿 正在使用 appdmg 构建标准的 macOS 安装磁盘映像..."
 # 生成 appdmg 的配置 JSON
 cat << 'EOF' > build/appdmg.json
 {
   "title": "TraceMark",
-  "background": "/Users/zerohsueh/.gemini/antigravity-ide/brain/d661d8a8-43c7-4bc2-8373-2405d0b7d303/dmg_installer_background_1781192962019.png",
+  "background": "dmg_bg.png",
   "contents": [
     { "x": 160, "y": 180, "type": "file", "path": "TraceMark.app" },
     { "x": 480, "y": 180, "type": "link", "path": "/Applications" }

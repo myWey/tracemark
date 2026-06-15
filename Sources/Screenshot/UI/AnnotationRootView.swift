@@ -5,6 +5,7 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import Translation
 
+
 /// 标注画布视图
 public struct AnnotationRootView: View {
     let image: CGImage
@@ -43,6 +44,7 @@ public struct AnnotationRootView: View {
     @State private var lastClickAnnotationId: UUID? = nil
     
     @State private var dragStartPos: CGPoint? = nil
+    @State private var dragStartClickCount: Int = 1
     @State private var lastDragPoint: CGPoint? = nil
     
     // OCR & Translation 状态
@@ -175,7 +177,7 @@ public struct AnnotationRootView: View {
                         .offset(x: offsetX, y: offsetY)
                         
                         MouseTrackingView(
-                            onDragStart: { pt in handleDragStart(mapPoint(pt)) },
+                            onDragStart: { pt, clickCount in handleDragStart(mapPoint(pt), clickCount: clickCount) },
                             onDragChange: { pt in handleDragChange(mapPoint(pt)) },
                             onDragEnd: handleDragEnd,
                             onCancel: onClose,
@@ -424,8 +426,14 @@ public struct AnnotationRootView: View {
         if let (_, handle) = hitTestAnnotation(point: point) {
             if handle == .calloutOrigin {
                 NSCursor.pointingHand.set()
-            } else if handle != nil {
-                NSCursor.crosshair.set()
+            } else if let handle = handle {
+                switch handle {
+                case .left, .right: NSCursor.resizeLeftRight.set()
+                case .top, .bottom: NSCursor.resizeUpDown.set()
+                case .topLeft, .bottomRight: NSCursor.crosshair.set()
+                case .topRight, .bottomLeft: NSCursor.crosshair.set()
+                case .calloutOrigin: NSCursor.arrow.set()
+                }
             } else {
                 NSCursor.openHand.set()
             }
@@ -440,7 +448,8 @@ public struct AnnotationRootView: View {
         }
     }
     
-    private func handleDragStart(_ point: CGPoint) {
+    private func handleDragStart(_ point: CGPoint, clickCount: Int) {
+        dragStartClickCount = clickCount
         dragStartPos = point
         lastDragPoint = point
         let now = ProcessInfo.processInfo.systemUptime
@@ -554,7 +563,7 @@ public struct AnnotationRootView: View {
             let dx = abs(lastPos.x - startPos.x)
             let dy = abs(lastPos.y - startPos.y)
             let isText = annotations[index].type == .text || annotations[index].type == .numberedText
-            if isText && dx < 5 && dy < 5 {
+            if isText && dx < 5 && dy < 5 && dragStartClickCount >= 2 {
                 prepareForWrite()
                 editingTextId = selectedId
             }
@@ -665,6 +674,30 @@ public struct AnnotationRootView: View {
     }
     @MainActor
     private func exportAndClose() {
+        if annotations.isEmpty && currentAnnotation == nil {
+            if let rId = recordId {
+                HistoryManager.shared.updateRecord(id: rId, annotations: [], finalImage: image)
+            } else {
+                CaptureEngine.shared.saveToDisk(image: image, fileName: "Screenshot_Annotated")
+            }
+            
+            let nsImage = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.writeObjects([nsImage])
+            
+            print("✅ [Annotation] 标注成功导出并保存！")
+            
+            withAnimation(.spring()) {
+                showToast = true
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                onClose()
+            }
+            return
+        }
+        
         if let cgImage = generateImageForExport() {
             if let rId = recordId {
                 HistoryManager.shared.updateRecord(id: rId, annotations: annotations, finalImage: cgImage)
@@ -895,21 +928,26 @@ struct AnnotationShapeView: View {
         Group {
             switch item.type {
             case .rectangle:
-                Rectangle()
-                    .stroke(item.color, lineWidth: item.lineWidth)
-                    .frame(width: item.rect.width, height: item.rect.height)
-                    .position(x: item.rect.midX, y: item.rect.midY)
+                Canvas { context, size in
+                    let rect = CGRect(origin: .zero, size: size).insetBy(dx: item.lineWidth / 2, dy: item.lineWidth / 2)
+                    context.stroke(Path(rect), with: .color(item.color), style: StrokeStyle(lineWidth: item.lineWidth))
+                }
+                .frame(width: item.rect.width, height: item.rect.height)
+                .position(x: item.rect.midX, y: item.rect.midY)
                     
             case .filledRectangle:
-                Rectangle()
-                    .fill(item.color)
-                    .frame(width: item.rect.width, height: item.rect.height)
-                    .position(x: item.rect.midX, y: item.rect.midY)
+                Canvas { context, size in
+                    context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(item.color))
+                }
+                .frame(width: item.rect.width, height: item.rect.height)
+                .position(x: item.rect.midX, y: item.rect.midY)
                     
             case .ellipse:
-                Ellipse()
-                    .stroke(item.color, lineWidth: item.lineWidth)
-                    .frame(width: item.rect.width, height: item.rect.height)
+                Canvas { context, size in
+                    let rect = CGRect(origin: .zero, size: size).insetBy(dx: item.lineWidth / 2, dy: item.lineWidth / 2)
+                    context.stroke(Path(ellipseIn: rect), with: .color(item.color), style: StrokeStyle(lineWidth: item.lineWidth))
+                }
+                .frame(width: item.rect.width, height: item.rect.height)
                     .position(x: item.rect.midX, y: item.rect.midY)
                     
             case .line:
@@ -1005,10 +1043,16 @@ struct AnnotationShapeView: View {
                             context.stroke(path, with: .color(item.color), style: StrokeStyle(lineWidth: max(2, fontSize * 0.15)))
                         }
                         
-                        // 序号点
+                        // 序号点 (使用 Canvas 绘制圆形背景以修复 Intel 渲染 BUG)
                         ZStack {
-                            Circle().fill(item.color).frame(width: fontSize * 1.5, height: fontSize * 1.5)
-                            Text("\(count)").font(.system(size: fontSize * 0.8, weight: .bold)).foregroundColor(.white)
+                            Canvas { context, size in
+                                context.fill(Path(ellipseIn: CGRect(origin: .zero, size: size)), with: .color(item.color))
+                            }
+                            .frame(width: fontSize * 1.5, height: fontSize * 1.5)
+                            
+                            Text("\(count)")
+                                .font(.system(size: fontSize * 0.8, weight: .bold))
+                                .foregroundColor(.white)
                         }
                         .position(x: item.startPoint.x, y: item.startPoint.y)
                         
@@ -1039,6 +1083,8 @@ struct AnnotationShapeView: View {
                                 }
                             } else {
                                 styledText(item.text?.isEmpty == false ? item.text! : " ")
+                                    .frame(maxWidth: finalMaxWidth, alignment: .leading)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                         .background(
@@ -1130,9 +1176,10 @@ struct AnnotationShapeView: View {
             case .counter:
                 let size = item.fontSize ?? 24.0
                 ZStack {
-                    Circle()
-                        .fill(item.color)
-                        .frame(width: size * 1.5, height: size * 1.5)
+                    Canvas { context, sz in
+                        context.fill(Path(ellipseIn: CGRect(origin: .zero, size: sz)), with: .color(item.color))
+                    }
+                    .frame(width: size * 1.5, height: size * 1.5)
                     
                     Text("\(item.counterValue ?? 1)")
                         .font(.system(size: size * 0.8, weight: .bold))

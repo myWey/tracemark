@@ -8,7 +8,7 @@ public class HotkeyManager {
     private var isEventHandlerInstalled = false
     
     public var currentKeyCode: UInt16 = 0
-    public var currentModifiers: UInt32 = UInt32(cmdKey | controlKey)
+    public var currentModifiers: UInt32 = UInt32(optionKey)
     
     private init() {
         loadFromUserDefaults()

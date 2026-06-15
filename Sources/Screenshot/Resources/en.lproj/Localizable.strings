@@ -26,7 +26,7 @@
 "清空屏幕" = "Clear Screen";
 "固定窗口" = "Pin Window";
 "保存并退出" = "Save & Exit";
-"区域截图 (Ctrl + Cmd + A)" = "Area Screenshot (Ctrl + Cmd + A)";
+"区域截图" = "Area Screenshot";
 "关闭所有贴图" = "Close All Pins";
 "退出" = "Quit";
 "历史标注再编辑" = "Edit Previous Annotation";
@@ -51,3 +51,5 @@
 "批量管理" = "Manage";
 "暂无截图历史" = "No screenshot history";
 "已删除选中的记录" = "Deleted selected records";
+"常规设置" = "General Settings";
+"开机自动启动" = "Launch at Login";
