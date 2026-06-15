@@ -11,6 +11,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 激活策略已在 main.swift 中设置为 .accessory
         
+        // 0. 主动请求必要的系统权限（首次打开引导）
+        if #available(macOS 11.0, *) {
+            CGRequestScreenCaptureAccess()
+        }
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+        AXIsProcessTrustedWithOptions(options as CFDictionary)
+        
         // 初始化标注管理器以注册通知监听
         _ = AnnotationManager.shared
         
@@ -110,11 +117,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @objc private func showHistoryAction() {
+        if isCapturing {
+            OverlayManager.shared.closeAll()
+            isCapturing = false
+        }
         DashboardRouter.shared.selectedTab = .history
         HistoryWindowController.shared.show()
     }
     
     @objc private func showPreferencesAction() {
+        if isCapturing {
+            OverlayManager.shared.closeAll()
+            isCapturing = false
+        }
         DashboardRouter.shared.selectedTab = .preferences
         HistoryWindowController.shared.show()
     }
@@ -127,8 +142,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     /// 触发整个截图核心工作流
     private func triggerCapture() {
-        guard !isCapturing else {
-            print("⚠️ [AppDelegate] 正在收集中，忽略重复触发")
+        if isCapturing {
+            print("⚠️ [AppDelegate] 正在收集中，取消旧任务并重新开始")
+            OverlayManager.shared.closeAll()
+            isCapturing = false
+            
+            // 给旧窗口销毁留出极小的时间窗口，避免被截取进新截图
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.triggerCapture()
+            }
             return
         }
         isCapturing = true
@@ -144,8 +166,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         
-        // 抓取完成后，再强制激活当前应用置顶，保证遮罩窗口能顺利承载焦点和渲染 (P3)
-        NSApp.activate(ignoringOtherApps: true)
+        // 抓取完成后，不需要强行激活应用，只将遮罩提升到最前即可避免主屏幕空间切换 (P3)
         
         // 2. 唤起全屏半透明选区遮罩
         print("ℹ️ [AppDelegate] 准备唤起 OverlayManager 遮罩层...")

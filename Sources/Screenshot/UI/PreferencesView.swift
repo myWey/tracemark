@@ -1,11 +1,13 @@
 import SwiftUI
 import Carbon
+import ServiceManagement
 
 public struct PreferencesView: View {
     @State private var isRecording = false
-    @State private var recordedShortcut: String = "Control + Command + A"
+    @State private var recordedShortcut: String = "Option + A"
     @State private var showConflictToast = false
     @ObservedObject var languageManager = LanguageManager.shared
+    @State private var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled
     
     public init() {
         let code = HotkeyManager.shared.currentKeyCode
@@ -77,6 +79,29 @@ public struct PreferencesView: View {
                         .font(.caption)
                         .foregroundColor(.orange)
                 }
+            }
+            
+            Divider()
+            
+            VStack(alignment: .leading, spacing: 12) {
+                Text("常规设置")
+                    .font(.headline)
+                
+                Toggle("开机自动启动", isOn: Binding(
+                    get: { launchAtLogin },
+                    set: { newValue in
+                        launchAtLogin = newValue
+                        do {
+                            if newValue {
+                                try SMAppService.mainApp.register()
+                            } else {
+                                try SMAppService.mainApp.unregister()
+                            }
+                        } catch {
+                            print("Failed to update SMAppService: \(error)")
+                        }
+                    }
+                ))
             }
             
             Divider()

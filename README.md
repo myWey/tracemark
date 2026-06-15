@@ -1,82 +1,81 @@
-# AgentOS Template
+# TraceMark
 
-一份**跨 IDE 通用**的 agentic coding 项目骨架。同一份骨架在 Kiro、Cursor、
-Claude Code、Windsurf、Antigravity、Trae，以及任何读 `AGENTS.md` 的工具下
-都工作。
+[English](README.md) | [简体中文](README_zh.md) | [繁體中文](README_zh-Hant.md) | [日本語](README_ja.md) | [한국어](README_ko.md)
 
-> 真理只放在 `.agent/`。各 IDE 的目录（`.kiro/`、`.cursor/` …）只是薄壳，
-> 通过引用拉同一份内容。**换 IDE 不丢知识**。
+TraceMark is an efficient, lightweight, system-level screenshot and annotation tool built for macOS (macOS 13 and above). It helps you quickly make clear and organized annotations based on your screenshots.
 
-## 这套骨架给你什么
+## ✨ Core Features
 
-- **五层洋葱**：philosophy → domain → architecture → contracts → impl，
-  每层各有家。
-- **前端"决策有家"**：在 ADR 之外引入 `flows/`，承载页面 / 组件 / 交互 /
-  跳转的流程级决策——人类讨论前端的自然介质。
-- **单主 agent + 6 个 sub-agent**（explorer、verifier、visual-reviewer、
-  impact-analyzer、doc-syncer、scribe）按动作类型，不按角色。
-- **Workflows**：bootstrap、retrofit、start-feature、architecture-change、
-  write-handoff、resume-session、regenerate-map、drift-check。
-- **逻辑时间优先**的项目记忆：ADR 编号、ULID session、epoch tag、commit hash。
-  wall-clock 仅供审计与漂移检测。
-- **自动生成的项目地图**在 `.agent/map/`，从代码 + 契约派生，不手编辑。
-- **跨 IDE shim** 现成：Kiro steering+hooks、Cursor rules、Claude Code、
-  Windsurf、Trae。
-- **Git hook 兜底**（`lefthook.yml`）：在没有 IDE-side hook 的环境下保证
-  确定性校验（边界、ID 唯一性、commit 格式）。
+- **Recommended Features**:
+  - 💬 **Numbered Text (Callouts)**: Automatically incrementing numbers with freely draggable callout text boxes, making step-by-step instructions clear and highly readable.
+  - **History Dashboard**: Supports re-editing of historical screenshots and annotations, avoiding the need to retake screenshots for minor detail tweaks. Historical screenshots can also be pinned to the desktop for easy reference.
+  - **OCR (Optical Character Recognition)**: Extract text from screenshots instantly.
+  - **Translation**: One-click translation (macOS 14.4 and above only).
+  - Multi-language support (i18n): Natively supports English, Chinese, Japanese, and Korean interfaces.
 
-## 开始用
+- **Rich Annotation Tools**:
+  - 🖌️ **Brush & Highlight**: Freehand drawing and text highlighting.
+  - 📏 **Shapes**: Standardized shapes including rectangles, ellipses, and arrows.
+  - 💧 **Mosaic & Blur**: Essential tools for protecting privacy and sensitive data.
+  - **Global Shortcut**: Customizable global shortcut to instantly freeze the screen.
 
-### 0→1 新项目
+## 📥 Installation Guide
 
-1. 复制本目录作为新项目根
-2. 在你的 IDE 里打开
-3. 在 agent chat 里粘：
+> ⚠️ **Note**: Since the current version does not yet have an Apple Developer signature, macOS's default Gatekeeper mechanism will block apps from unidentified developers. Please follow the steps below to authorize and run the app.
 
+### Download & Install
+1. Go to the [Releases](#) page of this repository and download the latest `TraceMark.dmg`.
+2. Open the DMG file and drag `TraceMark.app` into your **Applications** folder.
+
+### Bypass Gatekeeper (Installation Must-Read)
+
+If you encounter a "TraceMark is damaged and can't be opened" or "Unidentified developer" prompt, the most effective way is to remove the quarantine attribute using the Terminal.
+
+**Step-by-step Instructions:**
+1. Open the **Terminal** app (you can find it using Spotlight search `Cmd + Space` and typing "Terminal").
+2. Copy and paste the following command into the Terminal:
+   ```bash
+   sudo xattr -rd com.apple.quarantine /Applications/TraceMark.app
    ```
-   跑 .agent/workflows/bootstrap-project.md。
-   接下来我会提供产品上下文。
+3. Press **Enter**.
+4. The Terminal will prompt you for a `Password:`. Type your Mac login password (note: no characters will show up as you type, this is normal).
+5. Press **Enter** again.
+6. Done! You can now double-click to open TraceMark from your Applications folder normally.
+
+### Permissions Guide (First Run)
+
+To ensure TraceMark functions properly, the system needs to acquire necessary permissions upon first launch. When you run TraceMark for the first time, the system will automatically prompt you for authorization:
+
+1. **Screen Recording (Required)**: Used to capture screen images. Click "Open System Settings" in the prompt, find TraceMark, and toggle it on.
+2. **Accessibility (Recommended)**: Used to listen for global hotkeys. Click "Open System Settings" in the prompt, find TraceMark, and toggle it on.
+
+> If you accidentally deny the prompts, you can always manually enable them later by going to System Settings > Privacy & Security.
+
+### Customizing Shortcuts
+
+TraceMark's default screenshot shortcut is `Option + A`. If you find this conflicts with other system shortcuts, you can customize it:
+
+1. After opening TraceMark, click the TraceMark icon in the menu bar (top right of your screen).
+2. Select **Preferences...**.
+3. In the settings window, locate the "Screenshot Shortcut" option.
+4. Click the current shortcut button, then press your desired key combination (e.g., `Cmd + Shift + A` or `Control + Cmd + A`).
+5. The new shortcut will take effect immediately.
+
+## 🛠 Development & Build
+
+If you wish to build TraceMark from source, please ensure you have macOS 13+ and Xcode 14+ installed.
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/your-username/TraceMark.git
+   cd TraceMark
    ```
+2. Build and package the application:
+   ```bash
+   sh scripts/build-app.sh && sh scripts/build-dmg.sh
+   ```
+3. The built product will appear at `build/TraceMark.dmg`.
 
-4. 跟着 agent 完成 philosophy / 初始 ADR / 首份 spec
-5. 启动首个 vertical-slice
+## 📄 License
 
-### 嵌入既有项目
-
-复制 `AGENTS.md` + `.agent/` + 你用的 IDE shim 目录到既有 repo，再粘：
-
-```
-跑 .agent/workflows/retrofit-project.md。
-```
-
-retrofit 走"先观察、再追认、再改造"三阶段，不打断当前节奏。详见
-`.agent/workflows/retrofit-project.md`。
-
-## 目录速览
-
-```
-AGENTS.md                        通用 agent 入口（每个 IDE 都读）
-.agent/                          ◆ 真理源（IDE 无关）
-  core/                          稳定层：philosophy / glossary / conventions / boundaries
-  domain/                        实体、概念图
-  adr/                           架构决策（append-only）
-  flows/                         前端流程（页面 / 组件 / 交互 / 跳转）
-  map/                           自动生成的项目视图
-  sessions/                      跨窗口续接 handoff
-  skills/                        按需加载的知识包
-  workflows/                     可复用的 agent prompt
-  sub-agents/                    Sub-agent 定义
-  _meta.md                       本结构的 meta 说明
-  _LIMITATIONS.md                诚实的局限清单
-shared/                          跨域契约（tokens、schemas、events、api-contracts）
-.kiro/ .cursor/ .claude/ ...     各 IDE 薄壳
-lefthook.yml                     Git hook 兜底（跨 IDE）
-```
-
-## 接着读
-
-- [`AGENTS.md`](./AGENTS.md)——agent 入口
-- [`.agent/_meta.md`](./.agent/_meta.md)——这套结构是怎么工作的
-- [`.agent/_LIMITATIONS.md`](./.agent/_LIMITATIONS.md)——它做不到什么（先读这个）
-- [`.agent/workflows/bootstrap-project.md`](./.agent/workflows/bootstrap-project.md)——0→1 第一次跑
-- [`.agent/workflows/retrofit-project.md`](./.agent/workflows/retrofit-project.md)——既有项目嵌入
+[MIT License](LICENSE)

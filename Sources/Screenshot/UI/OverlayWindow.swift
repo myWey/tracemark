@@ -31,7 +31,7 @@ class TrackingHostingView<Content: View>: NSHostingView<Content> {
 
 /// 完全接管系统底层鼠标事件的视图，无视任何键盘修饰键（如按住 Command 时拖拽不会失效）
 struct MouseTrackingView: NSViewRepresentable {
-    let onDragStart: (CGPoint) -> Void
+    let onDragStart: (CGPoint, Int) -> Void
     let onDragChange: (CGPoint) -> Void
     let onDragEnd: () -> Void
     let onCancel: () -> Void
@@ -54,7 +54,6 @@ struct MouseTrackingView: NSViewRepresentable {
         view.onUndo = onUndo
         view.onRedo = onRedo
         view.onDelete = onDelete
-        view.updateCursor()
         return view
     }
     func updateNSView(_ nsView: TrackingNSView, context: Context) {
@@ -68,13 +67,13 @@ struct MouseTrackingView: NSViewRepresentable {
         nsView.onDelete = onDelete
         if nsView.activeTool != activeTool {
             nsView.activeTool = activeTool
-            nsView.updateCursor()
+            nsView.window?.invalidateCursorRects(for: nsView)
         }
     }
 }
 
 class TrackingNSView: NSView {
-    var onDown: ((CGPoint) -> Void)?
+    var onDown: ((CGPoint, Int) -> Void)?
     var onDrag: ((CGPoint) -> Void)?
     var onUp: (() -> Void)?
     var onCancel: (() -> Void)?
@@ -104,17 +103,40 @@ class TrackingNSView: NSView {
         }
     }
     
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil {
+            NotificationCenter.default.addObserver(forName: NSNotification.Name("SelectedToolChanged"), object: nil, queue: .main) { [weak self] notification in
+                if let tool = notification.object as? AnnotationToolType {
+                    self?.activeTool = tool
+                    if let selfView = self {
+                        self?.window?.invalidateCursorRects(for: selfView)
+                    }
+                }
+            }
+        }
+    }
+    
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        let isBrush = activeTool == .pencil || activeTool == .highlighter || activeTool == .blur || activeTool == .mosaic
+        if isBrush {
+            self.addCursorRect(self.bounds, cursor: NSCursor.transparent)
+        } else {
+            self.addCursorRect(self.bounds, cursor: NSCursor.arrow)
+        }
+    }
+    
     override func mouseMoved(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         onHover?(point)
     }
     
     override func mouseEntered(with event: NSEvent) {
-        updateCursor()
+        // Handled by resetCursorRects
     }
     
     override func mouseExited(with event: NSEvent) {
-        NSCursor.arrow.set()
         onHoverExited?()
     }
     
@@ -144,30 +166,18 @@ class TrackingNSView: NSView {
             self.window?.makeFirstResponder(self)
         }
         let point = convert(event.locationInWindow, from: nil)
-        updateCursor()
         onHover?(point)
-        onDown?(point)
+        onDown?(point, event.clickCount)
     }
     
     override func mouseDragged(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        updateCursor()
         onHover?(point)
         onDrag?(point)
     }
     
     override func mouseUp(with event: NSEvent) {
-        updateCursor()
         onUp?()
-    }
-    
-    func updateCursor() {
-        let isBrush = activeTool == .pencil || activeTool == .highlighter || activeTool == .blur || activeTool == .mosaic
-        if isBrush {
-            NSCursor.transparent.set()
-        } else {
-            NSCursor.arrow.set()
-        }
     }
 }
 
@@ -176,11 +186,40 @@ public class OverlayManager {
     public static let shared = OverlayManager()
     private var windows: [NSWindow] = []
     
-    private init() {}
+    private init() {
+        NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            if !(self?.windows.isEmpty ?? true) {
+                print("ℹ️ [OverlayManager] 应用失去焦点，自动取消截图")
+                self?.closeAll()
+            }
+        }
+        NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: nil, queue: .main) { [weak self] notification in
+            if let win = notification.object as? NSWindow, let self = self {
+                if self.windows.contains(win) {
+                    DispatchQueue.main.async {
+                        if !self.windows.contains(where: { $0.isKeyWindow }) {
+                            print("ℹ️ [OverlayManager] 遮罩窗口失去焦点，自动取消截图")
+                            self.closeAll()
+                        }
+                    }
+                }
+            }
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] notification in
+            if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+               app.bundleIdentifier != Bundle.main.bundleIdentifier {
+                if !(self?.windows.isEmpty ?? true) {
+                    print("ℹ️ [OverlayManager] 其他应用被激活 (\(app.localizedName ?? "")), 自动取消截图")
+                    self?.closeAll()
+                }
+            }
+        }
+    }
     
     /// 唤起全屏截图遮罩
     private var escMonitor: Any?
     private var escGlobalMonitor: Any?
+    private var onCanceledCallback: (() -> Void)?
     public func showOverlay(captures: [ScreenCapture], onCaptured: @escaping (CGImage, CGImage?, [AnnotationItem]?, NSScreen, PostCaptureAction) -> Void, canceled: @escaping () -> Void) {
         print("ℹ️ [OverlayManager] 开始唤起 \(captures.count) 个遮罩窗口...")
         closeAll() // 防御性清理
@@ -230,12 +269,15 @@ public class OverlayManager {
                 self.closeAll()
             })
             
+            // 将 canceled 回调保存起来供 didResignActive 使用
+            self.onCanceledCallback = canceled
+            
             let hostingView = TrackingHostingView(rootView: rootView.applyAppLanguage())
             hostingView.frame = NSRect(origin: .zero, size: screenFrame.size)
             
             let window = CaptureOverlayWindow(
                 contentRect: screenFrame,
-                styleMask: [.borderless], // 移除 .nonactivatingPanel 以强制获取焦点
+                styleMask: [.borderless, .nonactivatingPanel], // 恢复 .nonactivatingPanel 以避免抢焦点但保证能收到事件
                 backing: .buffered,
                 defer: false,
                 screen: screen
@@ -246,6 +288,7 @@ public class OverlayManager {
             window.backgroundColor = NSColor.black.withAlphaComponent(0.5) // 临时用半透明黑测试可见性
             window.isOpaque = false
             window.hasShadow = false
+            window.animationBehavior = .none // 防止 Apple 芯片上的闪烁动效
             window.isFloatingPanel = true
             window.level = .screenSaver
             window.ignoresMouseEvents = false
@@ -261,8 +304,7 @@ public class OverlayManager {
             
             print("ℹ️ [OverlayManager] 窗口属性 - frame: \(window.frame), contentView.bounds: \(window.contentView?.bounds ?? .zero), hostingView.frame: \(hostingView.frame)")
             
-            // 激活应用并显示窗口
-            NSApp.activate(ignoringOtherApps: true)
+            // 激活应用并显示窗口（不调用 NSApp.activate 以避免非必要的主屏幕切换）
             window.makeKeyAndOrderFront(nil)
             window.orderFrontRegardless()
             
@@ -279,6 +321,11 @@ public class OverlayManager {
     /// 关闭所有遮罩窗口
     public func closeAll() {
         print("ℹ️ [OverlayManager] 执行 closeAll，当前窗口数: \(self.windows.count)")
+        
+        if !self.windows.isEmpty {
+            self.onCanceledCallback?()
+            self.onCanceledCallback = nil
+        }
         if let monitor = escMonitor {
             NSEvent.removeMonitor(monitor)
             escMonitor = nil
@@ -333,6 +380,10 @@ struct OverlayRootView: View {
     }
     
     @State private var sessionState: CaptureSessionState = .cropping
+    
+    // 窗口吸附状态
+    @State private var availableWindows: [WindowInfo] = []
+    @State private var hoverWindowRect: CGRect? = nil
     
     // 裁剪框状态
     @State private var startPoint: CGPoint? = nil
@@ -391,6 +442,7 @@ struct OverlayRootView: View {
     
     @State private var dragStartPos: CGPoint? = nil
     @State private var lastDragPoint: CGPoint? = nil
+    @State private var dragStartClickCount: Int = 1
     
     /// 动态计算选区
     var selectedRect: CGRect? {
@@ -456,6 +508,28 @@ struct OverlayRootView: View {
                     .fill(Color.black.opacity(0.45), style: FillStyle(eoFill: true))
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .allowsHitTesting(false) // 让事件穿透
+                
+                // 3.5 窗口吸附高亮层
+                if sessionState == .cropping, selectedRect == nil, let hoverRect = hoverWindowRect {
+                    ZStack(alignment: .topLeading) {
+                        Rectangle()
+                            .stroke(Color.blue.opacity(0.8), lineWidth: 2)
+                            .background(Color.blue.opacity(0.1))
+                            .frame(width: hoverRect.width, height: hoverRect.height)
+                            .position(x: hoverRect.midX, y: hoverRect.midY)
+                        
+                        // 左上角显示像素规格
+                        Text("\(Int(hoverRect.width)) × \(Int(hoverRect.height))")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.black.opacity(0.6))
+                            .cornerRadius(4)
+                            .position(x: hoverRect.minX + 45, y: max(15, hoverRect.minY + 15))
+                    }
+                    .allowsHitTesting(false)
+                }
                 
                 // 4. 选区边框与尺寸标签
                 if let rect = selectedRect {
@@ -534,10 +608,16 @@ struct OverlayRootView: View {
                             hoverPoint = pt
                             isHoveringCanvas = true
                             handleHover(pt)
+                            if selectedTool == .pencil || selectedTool == .highlighter || selectedTool == .blur || selectedTool == .mosaic {
+                                NSCursor.transparent.set()
+                            } else {
+                                NSCursor.crosshair.set()
+                            }
                         }
                     },
                     onHoverExited: {
                         isHoveringCanvas = false
+                        NSCursor.arrow.set()
                     },
                     activeTool: selectedTool,
                     onUndo: undo,
@@ -620,6 +700,9 @@ struct OverlayRootView: View {
                     .allowsHitTesting(false)
                 }
             }
+        }
+        .onAppear {
+            self.availableWindows = WindowSnapper.getVisibleWindows(on: capture.screen)
         }
         .onChange(of: selectedTool, perform: handleSelectedToolChanged)
         .edgesIgnoringSafeArea(.all)
@@ -755,11 +838,21 @@ struct OverlayRootView: View {
                 NSCursor.crosshair.set()
             }
         } else {
+            // sessionState == .cropping
+            // 找出鼠标所在的窗口并高亮
+            if let win = availableWindows.first(where: { $0.rect.contains(point) }) {
+                if hoverWindowRect != win.rect {
+                    hoverWindowRect = win.rect
+                }
+            } else {
+                if hoverWindowRect != nil { hoverWindowRect = nil }
+            }
             NSCursor.crosshair.set()
         }
     }
     
-    private func handleDragStart(_ point: CGPoint) {
+    private func handleDragStart(_ point: CGPoint, clickCount: Int) {
+        dragStartClickCount = clickCount
         dragStartPos = point
         lastDragPoint = point
         if sessionState == .cropping {
@@ -969,9 +1062,16 @@ struct OverlayRootView: View {
             
             if selectedTool != .text {
                 if currentAnnotation?.isFreehandTool == true {
-                    currentAnnotation?.points?.append(point)
-                    // Optionally update endPoint for bounding box calculations
-                    currentAnnotation?.endPoint = point
+                    if let lastPoint = currentAnnotation?.points?.last {
+                        let distance = hypot(point.x - lastPoint.x, point.y - lastPoint.y)
+                        if distance > 3.0 { // 仅当移动超过 3px 时追加点，大幅降低 SwiftUI 重绘压力
+                            currentAnnotation?.points?.append(point)
+                            currentAnnotation?.endPoint = point
+                        }
+                    } else {
+                        currentAnnotation?.points?.append(point)
+                        currentAnnotation?.endPoint = point
+                    }
                 } else {
                     currentAnnotation?.endPoint = point
                 }
@@ -981,6 +1081,17 @@ struct OverlayRootView: View {
     
     private func handleDragEnd() {
         if sessionState == .cropping {
+            // 判断是否是单纯的点击且在窗口高亮内
+            let isClick = startPoint != nil && currentPoint != nil && abs(startPoint!.x - currentPoint!.x) < 3 && abs(startPoint!.y - currentPoint!.y) < 3
+            if isClick, let hoverRect = hoverWindowRect {
+                finalRect = hoverRect
+                sessionState = .editing
+                if let overlayWin = NSApp.windows.first(where: { $0 is CaptureOverlayWindow && $0.isVisible }) {
+                    overlayWin.makeKey()
+                }
+                return
+            }
+            
             if let rect = selectedRect, rect.width > 5 && rect.height > 5 {
                 // 进入编辑模式
                 finalRect = rect
@@ -995,7 +1106,7 @@ struct OverlayRootView: View {
         } else {
             // Editing State
             
-            // 检测单击进入编辑（在已选中的文本上点击且无大位移）
+            // 检测双击进入编辑（在已选中的文本上双击且无大位移）
             if let startPos = dragStartPos,
                let lastPos = lastDragPoint,
                let selectedId = selectedAnnotationId,
@@ -1003,7 +1114,7 @@ struct OverlayRootView: View {
                 let dx = abs(lastPos.x - startPos.x)
                 let dy = abs(lastPos.y - startPos.y)
                 let isText = annotations[index].type == .text || annotations[index].type == .numberedText
-                if isText && dx < 5 && dy < 5 {
+                if isText && dx < 5 && dy < 5 && dragStartClickCount >= 2 {
                     prepareForWrite()
                     editingTextId = selectedId
                 }
@@ -1191,14 +1302,12 @@ struct OverlayRootView: View {
     }
     
     private func handleCancel() {
-        sessionState = .cropping
-        finalRect = nil
-        startPoint = nil
-        currentPoint = nil
-        annotations.removeAll()
+        onCanceled()
     }
     
     private func handleSelectedToolChanged(_ newTool: AnnotationToolType) {
+        NotificationCenter.default.post(name: NSNotification.Name("SelectedToolChanged"), object: newTool)
+        
         if editingTextId != nil {
             if let index = annotations.firstIndex(where: { $0.id == editingTextId }) {
                 let text = annotations[index].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -1225,6 +1334,11 @@ struct OverlayRootView: View {
         
         let cleanCropped = capture.image.cropping(to: cropRect)!
         let shiftedAnnotations = offsetAnnotations(annotations, by: rect.origin)
+        
+        if shiftedAnnotations.isEmpty {
+            onCaptured(cleanCropped, cleanCropped, shiftedAnnotations, action)
+            return
+        }
         
         let exportView = AnnotationCanvasLayer(
             image: cleanCropped,
@@ -1506,17 +1620,19 @@ struct UnifiedToolbarView: View {
                         .buttonStyle(PlainButtonStyle())
                         .help("置顶贴图 (Pin)")
                         
-                        // Translate
-                        Button(action: onTranslate) {
-                            Image(systemName: "translate")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.white)
-                                .frame(width: 28, height: 28)
-                                .background(Color.purple.opacity(0.85))
-                                .cornerRadius(6)
+                        // Translate (Only available on macOS 14.4+)
+                        if #available(macOS 14.4, *) {
+                            Button(action: onTranslate) {
+                                Image(systemName: "translate")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(.white)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color.purple.opacity(0.85))
+                                    .cornerRadius(6)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .help("翻译选区 (Translate)")
                         }
-                        .buttonStyle(PlainButtonStyle())
-                        .help("翻译选区 (Translate)")
                         
                         // OCR
                         Button(action: onOCR) {
@@ -1548,6 +1664,11 @@ struct UnifiedToolbarView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 10)
+            }
+        }
+        .onChange(of: selectedTool) { newTool in
+            if newTool == .numberedText {
+                selectedTextStyle = .roundedBoxed
             }
         }
         .background(
@@ -1624,7 +1745,7 @@ struct GroupButton: View {
         }) {
             Group {
                 if isCustomSVG {
-                    SVGIconView(pathData: customSVGPath, color: isSelected ? .white : .primary)
+                    SVGIconView(pathData: customSVGPath, color: isSelected ? Color.white : Color.primary)
                         .frame(width: 14, height: 14)
                 } else {
                     Image(systemName: iconName)

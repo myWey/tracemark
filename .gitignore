@@ -6,13 +6,19 @@ dist/
 build/
 .next/
 .turbo/
+.swiftpm/
+
+# Xcode / Swift
+.build/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
 
 # Local env
 .env
 .env.local
 
-# Sessions are local by default; commit selectively if desired
-# .agent/sessions/
-
-# Auto-generated maps may or may not be committed (team choice)
-# .agent/map/*.svg
+# AgentOS documents (Excluded from public repo for privacy)
+.agent/
+AGENTS.md
+log.txt
+AppIcon.icns
