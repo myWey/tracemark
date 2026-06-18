@@ -5,6 +5,7 @@ public struct WindowInfo {
     public let rect: CGRect
     public let level: Int
     public let layer: Int
+    public let windowID: CGWindowID
 }
 
 public class WindowSnapper {
@@ -89,7 +90,9 @@ public class WindowSnapper {
                 height: localBottomLeftRect.height
             )
             
-            windows.append(WindowInfo(rect: localTopLeftRect, level: 0, layer: layer))
+            let windowID = info[kCGWindowNumber as String] as? CGWindowID ?? 0
+            
+            windows.append(WindowInfo(rect: localTopLeftRect, level: 0, layer: layer, windowID: windowID))
         }
         
         return windows

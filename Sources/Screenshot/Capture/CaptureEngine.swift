@@ -135,4 +135,19 @@ public class CaptureEngine {
             return nil
         }
     }
+
+    /// 将 CGImage 编码为 PNG Data，使用 CGImageDestination 以保留 alpha 通道
+    public func pngData(from image: CGImage) -> Data? {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else {
+            print("❌ [CaptureEngine] 无法创建 PNG 数据目的地")
+            return nil
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else {
+            print("❌ [CaptureEngine] PNG 数据编码失败")
+            return nil
+        }
+        return data as Data
+    }
 }

@@ -12,19 +12,35 @@ echo "⏳ 正在检查并清除旧的 TraceMark 进程..."
 pkill -x "TraceMark" || true
 
 # 清理旧的编译产物，防止 SwiftPM 缓存定位到旧二进制
-echo "🧹 正在清理旧的编译二进制文件..."
+# 注意：swift package clean 不会清理 --arch 指定的架构目录，需要手动清理 .o 文件
+echo "🧹 正在清理 SwiftPM 构建缓存..."
+swift package clean 2>/dev/null || true
+find .build/arm64-apple-macosx -type f \( -name "*.o" -o -name "TraceMark" \) -delete 2>/dev/null || true
+find .build/x86_64-apple-macosx -type f \( -name "*.o" -o -name "TraceMark" \) -delete 2>/dev/null || true
 find .build -type f -name "TraceMark" -delete 2>/dev/null || true
+
+# 强制使用 Swift 5 语言模式与 macOS 13 部署目标，提升对旧系统（包括 Intel Ventura）的兼容性
+export MACOSX_DEPLOYMENT_TARGET=13.0
+COMMON_SWIFT_FLAGS="-Xswiftc -swift-version -Xswiftc 5"
+
+# x86_64 额外限制：使用通用 x86-64 指令集，避免生成较新 Intel CPU 专属指令（如 AVX2/AVX512）
+# 防止旧款 Intel Mac 启动或运行时出现 Illegal Instruction
+X86_64_SWIFT_FLAGS="$COMMON_SWIFT_FLAGS -Xswiftc -target -Xswiftc x86_64-apple-macosx13.0 -Xcc -march=x86-64"
+
+# 当前环境需要禁用 sandbox 才能正常编译
+SWIFT_BUILD_OPTS="--disable-sandbox"
 
 echo "========================================"
 echo "🚧 [build-app] 开始编译 Swift 可执行程序..."
+echo "   Deployment Target: $MACOSX_DEPLOYMENT_TARGET"
 echo "========================================"
 
 # 1. 运行 swift build 分别构建两种架构
 echo "🚧 正在编译 arm64 架构..."
-swift build -c release --arch arm64
+swift build -c release --arch arm64 $SWIFT_BUILD_OPTS $COMMON_SWIFT_FLAGS
 
 echo "🚧 正在编译 x86_64 架构..."
-swift build -c release --arch x86_64
+swift build -c release --arch x86_64 $SWIFT_BUILD_OPTS $X86_64_SWIFT_FLAGS
 
 # 2. 确定编译生成的二进制文件路径并使用 lipo 合并
 BIN_ARM64=$(find .build/arm64-apple-macosx -type f -name "TraceMark" ! -path "*/checkouts/*" ! -path "*.dSYM/*" -print0 | xargs -0 ls -t 2>/dev/null | head -n 1 || true)
@@ -70,7 +86,9 @@ fi
 BUNDLE_PATH=$(find .build -type d -name "*.bundle" | grep -E "(TraceMark_TraceMark|TraceMark_Screenshot|Screenshot_Screenshot)\.bundle" | head -n 1 || true)
 if [ -n "${BUNDLE_PATH}" ] && [ -d "${BUNDLE_PATH}" ]; then
     echo "📦 找到资源 Bundle: ${BUNDLE_PATH}"
-    cp -R "${BUNDLE_PATH}/"* "${RESOURCES_DIR}/"
+    # 必须保留 .bundle 目录本身，而不是只复制其内容；
+    # 放到 Contents/Resources/ 下，与 LanguageManager 自定义查找逻辑配合。
+    cp -R "${BUNDLE_PATH}" "${RESOURCES_DIR}/"
 else
     echo "⚠️ 警告: 未找到资源 Bundle，图标或多语言可能失效。"
 fi

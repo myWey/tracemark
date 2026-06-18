@@ -4,11 +4,12 @@ struct MagnifierView: View {
     let baseImage: CGImage
     let hoverPoint: CGPoint
     let scaleFactor: CGFloat
+    let selectedColor: Color
     let onCopyColor: () -> Void
     
     // Settings
-    let magnifierSize: CGFloat = 110
-    let zoomLevel: CGFloat = 3.0
+    let magnifierSize: CGFloat = 130
+    let zoomLevel: CGFloat = 5.0
     
     @State private var hexString: String = ""
     @State private var rgbString: String = ""
@@ -31,21 +32,40 @@ struct MagnifierView: View {
                         .frame(width: magnifierSize, height: magnifierSize)
                 }
                 
-                // Crosshair
+                // Crosshair & Center Pixel Highlight
+                Rectangle()
+                    .stroke(Color.blue, lineWidth: 1)
+                    .frame(width: zoomLevel, height: zoomLevel)
+                    .shadow(color: .black.opacity(0.5), radius: 1)
+                
                 Path { path in
-                    path.move(to: CGPoint(x: magnifierSize / 2, y: 0))
-                    path.addLine(to: CGPoint(x: magnifierSize / 2, y: magnifierSize))
-                    path.move(to: CGPoint(x: 0, y: magnifierSize / 2))
-                    path.addLine(to: CGPoint(x: magnifierSize, y: magnifierSize / 2))
+                    let center = magnifierSize / 2
+                    let halfZoom = zoomLevel / 2
+                    
+                    // Top
+                    path.move(to: CGPoint(x: center, y: 0))
+                    path.addLine(to: CGPoint(x: center, y: center - halfZoom))
+                    // Bottom
+                    path.move(to: CGPoint(x: center, y: center + halfZoom))
+                    path.addLine(to: CGPoint(x: center, y: magnifierSize))
+                    // Left
+                    path.move(to: CGPoint(x: 0, y: center))
+                    path.addLine(to: CGPoint(x: center - halfZoom, y: center))
+                    // Right
+                    path.move(to: CGPoint(x: center + halfZoom, y: center))
+                    path.addLine(to: CGPoint(x: magnifierSize, y: center))
                 }
-                .stroke(Color.green, lineWidth: 1)
+                .stroke(Color.blue, lineWidth: 1)
                 .frame(width: magnifierSize, height: magnifierSize)
                 
                 // Outer ring
                 Circle()
-                    .stroke(Color.white, lineWidth: 2)
+                    .stroke(Color.white.opacity(0.9), lineWidth: 1.5)
+                    .overlay(
+                        Circle().stroke(Color.black.opacity(0.2), lineWidth: 0.5)
+                    )
                     .frame(width: magnifierSize, height: magnifierSize)
-                    .shadow(color: .black.opacity(0.3), radius: 3)
+                    .shadow(color: .black.opacity(0.4), radius: 6)
             }
             
             // Info panel
@@ -67,15 +87,18 @@ struct MagnifierView: View {
                 }
                 Text(LanguageManager.shared.localizedString(forKey: "按 ⌘C 复制颜色"))
                     .font(.system(size: 9))
-                    .foregroundColor(.gray)
+                    .foregroundColor(.secondary)
                     .padding(.top, 2)
             }
-            .font(.system(size: 11, design: .monospaced))
-            .foregroundColor(.white)
-            .padding(8)
+            .font(.system(size: 11, weight: .medium, design: .monospaced))
+            .foregroundColor(.primary)
+            .padding(10)
             .frame(width: magnifierSize + 30)
-            .background(Color.black.opacity(0.75))
-            .cornerRadius(8)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color(NSColor.windowBackgroundColor).opacity(0.95))
+                    .shadow(radius: 10)
+            )
         }
         .onChange(of: hoverPoint) { _ in
             updateMagnifier()

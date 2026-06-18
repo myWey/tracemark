@@ -191,8 +191,14 @@ struct ThumbnailRootView: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         
-        let nsImage = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
-        pasteboard.writeObjects([nsImage])
+        let pbItem = NSPasteboardItem()
+        if let pngData = CaptureEngine.shared.pngData(from: image) {
+            pbItem.setData(pngData, forType: .png)
+            pasteboard.writeObjects([pbItem])
+        } else {
+            let nsImage = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+            pasteboard.writeObjects([nsImage])
+        }
         print("📋 [ThumbnailView] 已复制到系统剪贴板")
     }
     

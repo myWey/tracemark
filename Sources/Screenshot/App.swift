@@ -60,6 +60,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return true
     }
     
+    func application(_ sender: NSApplication, openFile filename: String) -> Bool {
+        let url = URL(fileURLWithPath: filename)
+        if let image = NSImage(contentsOf: url), let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            
+            // 这里直接通过发通知或者在主线程显示图片。
+            // 我们直接保存进历史并打开。
+            // CaptureEngine 的 saveToDisk 会自动将其保存到本地目录并添加到 HistoryManager 记录中。
+            CaptureEngine.shared.saveToDisk(image: cgImage, originalImage: cgImage)
+            
+            // 等待一小段时间确保记录保存，然后发送通知打开标注画布
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                // 读取最新的 recordId
+                let latestRecordId = HistoryManager.shared.records.first?.id
+                var userInfo: [String: Any] = [
+                    "image": cgImage,
+                    "recordId": latestRecordId as Any
+                ]
+                let emptyAnnotations: [AnnotationItem] = []
+                userInfo["annotationsData"] = try? JSONEncoder().encode(emptyAnnotations)
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("OpenAnnotationCanvas"),
+                    object: nil,
+                    userInfo: userInfo
+                )
+            }
+            return true
+        }
+        return false
+    }
+    
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         
@@ -196,11 +226,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 保存一份正本到本地历史
         CaptureEngine.shared.saveToDisk(image: image, originalImage: cleanImage, annotations: annotations)
         
-        // 复制到剪贴板
-        let nsImage = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+        if action == .copyToAI {
+            DispatchQueue.main.async {
+                ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: "已保存并复制原图和AI 定位坐标"))
+            }
+            print("✅ [AppDelegate] AI 原图与坐标已由来源视图处理并复制")
+            
+            let recordId = HistoryManager.shared.records.first?.id
+            DispatchQueue.main.async {
+                AnnotationManager.shared.showAnnotationCanvas(for: image, initialAnnotations: annotations ?? [], recordId: recordId)
+            }
+            return
+        }
+        
+        // 普通截图：复制到剪贴板，使用与保存文件一致的 PNG 编码以保留透明圆角
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.writeObjects([nsImage])
+        let pbItem = NSPasteboardItem()
+        if let pngData = CaptureEngine.shared.pngData(from: image) {
+            pbItem.setData(pngData, forType: .png)
+            // 同时提供 NSImage 作为后备，但将 PNG 置于前面以优先保留 alpha（减少微信等外部应用白边）
+            let nsImage = NSImage(data: pngData) ?? NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+            pasteboard.writeObjects([pbItem, nsImage])
+        } else {
+            let nsImage = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+            pasteboard.writeObjects([nsImage])
+        }
         
         print("✅ [AppDelegate] 最终截图已保存并复制到剪贴板！")
         
@@ -214,15 +265,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let recordId = HistoryManager.shared.records.first?.id
             
             DispatchQueue.main.async {
-                NotificationCenter.default.post(
-                    name: NSNotification.Name("OpenAnnotationCanvas"),
-                    object: nil,
-                    userInfo: [
-                        "image": image,
-                        "annotations": annotations ?? [],
-                        "recordId": recordId as Any
-                    ]
-                )
+                AnnotationManager.shared.showAnnotationCanvas(for: image, initialAnnotations: annotations ?? [], recordId: recordId)
             }
             
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {

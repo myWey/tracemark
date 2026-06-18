@@ -58,6 +58,26 @@ public class LanguageManager: ObservableObject {
         NotificationCenter.default.post(name: NSNotification.Name("LanguageDidChange"), object: nil)
     }
     
+    /// 定位 SwiftPM 资源 bundle，避免自动生成的 Bundle.module 在 .app 包中找不到时 fatalError。
+    /// 查找顺序：Contents/Resources -> .app 根目录 -> 构建目录 -> Bundle.main
+    private var resolvedResourceBundle: Bundle {
+        let bundleName = "TraceMark_TraceMark"
+        let candidates: [URL?] = [
+            Bundle.main.resourceURL?.appendingPathComponent("\(bundleName).bundle"),
+            Bundle.main.bundleURL.appendingPathComponent("\(bundleName).bundle"),
+            Bundle(for: LanguageManager.self).resourceURL?.appendingPathComponent("\(bundleName).bundle"),
+            Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent(".build/x86_64-apple-macosx/release/\(bundleName).bundle"),
+            Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent(".build/arm64-apple-macosx/release/\(bundleName).bundle"),
+            Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent(".build/debug/\(bundleName).bundle")
+        ]
+        for candidate in candidates {
+            if let url = candidate, let bundle = Bundle(url: url) {
+                return bundle
+            }
+        }
+        return Bundle.main
+    }
+
     public func localizedString(forKey key: String) -> String {
         let code: String
         if selectedLanguage == .system {
@@ -76,32 +96,38 @@ public class LanguageManager: ObservableObject {
         } else {
             code = selectedLanguage.rawValue
         }
-        
-        // Find the bundle for the specific language
-        var bundlePath = Bundle.main.path(forResource: code, ofType: "lproj")
-        
-        // Handle variations
-        if bundlePath == nil {
-             bundlePath = Bundle.main.path(forResource: code.lowercased(), ofType: "lproj")
+
+        // 直接解析 .lproj/Localizable.strings，绕过 Bundle 查找的兼容性问题
+        let candidates = [resolvedResourceBundle, Bundle.main]
+        let lprojNames = [code, code.lowercased(), code.components(separatedBy: "-").first, code.components(separatedBy: "-").first?.lowercased()].compactMap { $0 }
+
+        for bundle in candidates {
+            for lprojName in lprojNames {
+                // 方案 A：直接读取 .strings 文件作为 plist
+                if let url = bundle.url(forResource: "Localizable", withExtension: "strings", subdirectory: "\(lprojName).lproj"),
+                   let dict = try? PropertyListSerialization.propertyList(from: Data(contentsOf: url), format: nil) as? [String: String],
+                   let value = dict[key], !value.isEmpty {
+                    return value
+                }
+                
+                // 方案 B：尝试读取 .strings 为文本并解析（兼容 SPM 可能未编译为 binary plist 的情况）
+                if let url = bundle.url(forResource: "Localizable", withExtension: "strings", subdirectory: "\(lprojName).lproj"),
+                   let content = try? String(contentsOf: url, encoding: .utf8) {
+                    // 简单正则匹配 "key" = "value";
+                    let pattern = "\"\(NSRegularExpression.escapedPattern(for: key))\"\\s*=\\s*\"([^\"]+)\"\\s*;"
+                    if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+                       let match = regex.firstMatch(in: content, options: [], range: NSRange(location: 0, length: content.utf16.count)),
+                       match.numberOfRanges > 1,
+                       let valueRange = Range(match.range(at: 1), in: content) {
+                        return String(content[valueRange])
+                    }
+                }
+            }
         }
         
-        if bundlePath == nil, let langCode = code.components(separatedBy: "-").first {
-             bundlePath = Bundle.main.path(forResource: langCode, ofType: "lproj")
-             if bundlePath == nil {
-                 bundlePath = Bundle.main.path(forResource: langCode.lowercased(), ofType: "lproj")
-             }
-        }
-        
-        // Fallback to English
-        if bundlePath == nil {
-            bundlePath = Bundle.main.path(forResource: "en", ofType: "lproj")
-        }
-        
-        guard let path = bundlePath, let bundle = Bundle(path: path) else {
-            return NSLocalizedString(key, comment: "")
-        }
-        
-        return NSLocalizedString(key, bundle: bundle, comment: "")
+        // 最终回退：使用系统默认 NSLocalizedString
+        let result = NSLocalizedString(key, comment: "")
+        return result.isEmpty ? key : result
     }
 }
 

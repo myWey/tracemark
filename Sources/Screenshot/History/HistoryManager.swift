@@ -20,6 +20,7 @@ public class HistoryManager {
     private let metadataURL: URL
     
     public private(set) var records: [ScreenshotRecord] = []
+    private let thumbnailCache = NSCache<NSString, NSImage>()
     
     private init() {
         // App Sandbox Directory: ~/Library/Application Support/com.zerohsueh.TraceMark.App/History
@@ -108,6 +109,31 @@ public class HistoryManager {
     /// 获取可用于显示的缩略图（这里简单返回 NSImage）
     public func image(for fileName: String) -> NSImage? {
         return NSImage(contentsOf: fileURL(for: fileName))
+    }
+    
+    /// 获取优化的缩略图并缓存，防止 LazyVGrid 滚动掉帧
+    public func thumbnail(for fileName: String, maxSize: CGFloat = 320) -> NSImage? {
+        let cacheKey = "\(fileName)_\(maxSize)" as NSString
+        if let cached = thumbnailCache.object(forKey: cacheKey) {
+            return cached
+        }
+        
+        let url = fileURL(for: fileName)
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageIfAbsent: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxSize
+        ]
+        
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return nil
+        }
+        
+        let thumb = NSImage(cgImage: cgImage, size: .zero)
+        thumbnailCache.setObject(thumb, forKey: cacheKey)
+        return thumb
     }
     
     /// 获取某条记录的文件 URL (用于拖拽等)

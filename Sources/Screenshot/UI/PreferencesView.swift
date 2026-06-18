@@ -28,21 +28,21 @@ public struct PreferencesView: View {
     
     public var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            Text("偏好设置")
+            Text(LanguageManager.shared.localizedString(forKey: "偏好设置"))
                 .font(.title)
                 .fontWeight(.bold)
             
             VStack(alignment: .leading, spacing: 12) {
-                Text("全局快捷键")
+                Text(LanguageManager.shared.localizedString(forKey: "全局快捷键"))
                     .font(.headline)
                 
                 HStack {
-                    Text("截图快捷键:")
+                    Text(LanguageManager.shared.localizedString(forKey: "截图快捷键:"))
                     
                     Button(action: {
                         isRecording = true
                     }) {
-                        Text(isRecording ? "请按下新快捷键..." : LocalizedStringKey(recordedShortcut))
+                        Text(isRecording ? LanguageManager.shared.localizedString(forKey: "请按下新快捷键...") : recordedShortcut)
                             .frame(minWidth: 150)
                             .padding(.vertical, 4)
                             .padding(.horizontal, 8)
@@ -66,16 +66,16 @@ public struct PreferencesView: View {
                 }
                 
                 if showConflictToast {
-                    Text("快捷键冲突或无效，请尝试其他组合。")
+                    Text(LanguageManager.shared.localizedString(forKey: "快捷键冲突或无效，请尝试其他组合。"))
                         .font(.caption)
                         .foregroundColor(.red)
                         .transition(.opacity)
                 } else {
-                    Text("点击上方按钮后直接按下组合键即可设置。")
+                    Text(LanguageManager.shared.localizedString(forKey: "点击上方按钮后直接按下组合键即可设置。"))
                         .font(.caption)
                         .foregroundColor(.secondary)
                     
-                    Text("注意：部分快捷键（如 Cmd+Space）被 macOS 系统全局保留，录制时若无反应请更换组合。")
+                    Text(LanguageManager.shared.localizedString(forKey: "注意：部分快捷键（如 Cmd+Space）被 macOS 系统全局保留，录制时若无反应请更换组合。"))
                         .font(.caption)
                         .foregroundColor(.orange)
                 }
@@ -84,10 +84,10 @@ public struct PreferencesView: View {
             Divider()
             
             VStack(alignment: .leading, spacing: 12) {
-                Text("常规设置")
+                Text(LanguageManager.shared.localizedString(forKey: "常规设置"))
                     .font(.headline)
                 
-                Toggle("开机自动启动", isOn: Binding(
+                Toggle(LanguageManager.shared.localizedString(forKey: "开机自动启动"), isOn: Binding(
                     get: { launchAtLogin },
                     set: { newValue in
                         launchAtLogin = newValue
@@ -107,11 +107,11 @@ public struct PreferencesView: View {
             Divider()
             
             VStack(alignment: .leading, spacing: 12) {
-                Text("多语言支持")
+                Text(LanguageManager.shared.localizedString(forKey: "多语言支持"))
                     .font(.headline)
                 
                 HStack {
-                    Text("显示语言:")
+                    Text(LanguageManager.shared.localizedString(forKey: "显示语言:"))
                     
                     Picker("", selection: $languageManager.selectedLanguage) {
                         ForEach(AppLanguage.allCases) { lang in
@@ -122,7 +122,7 @@ public struct PreferencesView: View {
                     .frame(width: 150)
                 }
                 
-                Text("TraceMark 默认跟随您的 macOS 系统语言。支持实时切换多种语言。")
+                Text(LanguageManager.shared.localizedString(forKey: "TraceMark 默认跟随您的 macOS 系统语言。支持实时切换多种语言。"))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

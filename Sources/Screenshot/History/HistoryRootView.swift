@@ -105,6 +105,40 @@ public struct DashboardRootView: View {
             }
         }
         .frame(minWidth: 850, minHeight: 500)
+        .onDrop(of: [.image, .fileURL], isTargeted: nil) { providers in
+            guard let provider = providers.first else { return false }
+            
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, error in
+                    if let data = data, let urlString = String(data: data, encoding: .utf8), let url = URL(string: urlString) {
+                        if let nsImage = NSImage(contentsOf: url), let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                            DispatchQueue.main.async {
+                                NotificationCenter.default.post(
+                                    name: NSNotification.Name("OpenAnnotationCanvas"),
+                                    object: nil,
+                                    userInfo: ["image": cgImage]
+                                )
+                            }
+                        }
+                    }
+                }
+                return true
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, error in
+                    if let data = data, let nsImage = NSImage(data: data), let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                        DispatchQueue.main.async {
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("OpenAnnotationCanvas"),
+                                object: nil,
+                                userInfo: ["image": cgImage]
+                            )
+                        }
+                    }
+                }
+                return true
+            }
+            return false
+        }
     }
 }
 
@@ -361,6 +395,7 @@ struct HistoryItemView: View {
                         .frame(width: 160, height: 90)
                     
                     HStack(spacing: 8) {
+                        Spacer()
                         Button(action: copyToClipboard) {
                             Image(systemName: "doc.on.doc")
                                 .font(.system(size: 11, weight: .medium))
@@ -370,7 +405,7 @@ struct HistoryItemView: View {
                                 .clipShape(Circle())
                         }
                         .buttonStyle(PlainButtonStyle())
-                        .help("复制到剪贴板")
+                        .help("复制截图")
                         
                         Button(action: showInFinder) {
                             Image(systemName: "folder")
@@ -404,7 +439,9 @@ struct HistoryItemView: View {
                         }
                         .buttonStyle(PlainButtonStyle())
                         .help("重新编辑标注")
+                        Spacer()
                     }
+                    .frame(width: 160, height: 90, alignment: .center)
                 }
                 
                 if viewModel.isManageMode {
@@ -478,7 +515,8 @@ struct HistoryItemView: View {
     
     private func loadImage() {
         DispatchQueue.global(qos: .userInitiated).async {
-            let img = HistoryManager.shared.image(for: record.fileName)
+            // Load a 320px thumbnail instead of the full size image to prevent frame drops
+            let img = HistoryManager.shared.thumbnail(for: record.fileName, maxSize: 320)
             DispatchQueue.main.async {
                 self.image = img
             }
@@ -499,11 +537,70 @@ struct HistoryItemView: View {
         return formatter.string(fromByteCount: bytes)
     }
     
-    private func copyToClipboard() {
-        guard let img = image else { return }
+    private func copyOriginalImage() {
+        let originalURL = HistoryManager.shared.fileURL(for: record.fileName.replacingOccurrences(of: ".png", with: "_original.png"))
+        let url = FileManager.default.fileExists(atPath: originalURL.path) ? originalURL : HistoryManager.shared.fileURL(for: record.fileName)
+        
+        guard let fullImage = NSImage(contentsOf: url) else { return }
+        
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.writeObjects([img])
+        
+        let pbItem = NSPasteboardItem()
+        if let tiffData = fullImage.tiffRepresentation {
+            pbItem.setData(tiffData, forType: .tiff)
+        }
+        
+        pasteboard.writeObjects([pbItem])
+        
+        DispatchQueue.main.async {
+            ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: "已复制原图"))
+        }
+    }
+    
+    private func copyCoordinates() {
+        guard let annotations = record.annotations else { return }
+        let aiMarkers = annotations.filter { $0.type == .aiMarker }
+        guard !aiMarkers.isEmpty else { return }
+        
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        
+        var textOutput = LanguageManager.shared.localizedString(forKey: "以下是在原图上圈出的目标元素坐标 [xmin, ymin, xmax, ymax]：") + "\n\n"
+        for marker in aiMarkers.sorted(by: { ($0.counterValue ?? 0) < ($1.counterValue ?? 0) }) {
+            let idStr = marker.displayCounterString
+            let rect = marker.rect
+            let absStr = "[\(Int(rect.minX)), \(Int(rect.minY)), \(Int(rect.maxX)), \(Int(rect.maxY))]"
+            textOutput += "\(idStr). \(absStr)\n"
+        }
+        
+        let pbItem = NSPasteboardItem()
+        pbItem.setString(textOutput, forType: .string)
+        
+        pasteboard.writeObjects([pbItem])
+        
+        DispatchQueue.main.async {
+            ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: "已复制坐标"))
+        }
+    }
+    
+    private func copyToClipboard() {
+        let url = HistoryManager.shared.fileURL(for: record.fileName)
+        guard let fullImage = NSImage(contentsOf: url) else { return }
+        
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        
+        let pbItem = NSPasteboardItem()
+        if let tiffData = fullImage.tiffRepresentation {
+            pbItem.setData(tiffData, forType: .tiff)
+        }
+        
+        pasteboard.writeObjects([pbItem])
+        
+        DispatchQueue.main.async {
+            ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: "已复制到剪贴板"))
+        }
     }
     
     private func showInFinder() {
@@ -533,15 +630,6 @@ struct HistoryItemView: View {
         }
         
         let initialAnnotations = record.annotations ?? []
-        
-        NotificationCenter.default.post(
-            name: NSNotification.Name("OpenAnnotationCanvas"),
-            object: nil,
-            userInfo: [
-                "image": cgImage,
-                "annotations": initialAnnotations,
-                "recordId": record.id
-            ]
-        )
+        AnnotationManager.shared.showAnnotationCanvas(for: cgImage, initialAnnotations: initialAnnotations, recordId: record.id)
     }
 }

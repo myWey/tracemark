@@ -22,8 +22,13 @@ public class AnnotationManager {
             print("🔔 [AnnotationManager] 收到 OpenAnnotationCanvas 通知，准备拉起标注画布...")
             if let userInfo = notification.userInfo {
                 let image = userInfo["image"] as! CGImage
-                let annotations = userInfo["annotations"] as? [AnnotationItem] ?? []
                 let recordId = userInfo["recordId"] as? UUID
+                let annotations: [AnnotationItem]
+                if let data = userInfo["annotationsData"] as? Data {
+                    annotations = (try? JSONDecoder().decode([AnnotationItem].self, from: data)) ?? []
+                } else {
+                    annotations = userInfo["annotations"] as? [AnnotationItem] ?? []
+                }
                 self?.showAnnotationCanvas(for: image, initialAnnotations: annotations, recordId: recordId)
             } else if let obj = notification.object {
                 let image = obj as! CGImage
@@ -50,7 +55,7 @@ public class AnnotationManager {
         let imageHeight = CGFloat(image.height) / scaleFactor
         
         // 加上工具栏所需的额外高度 (预留 120pt 给多行工具栏和边距)，且宽度不小于工具栏最低要求宽度
-        let windowWidth = max(imageWidth, 740)
+        let windowWidth = max(imageWidth, 850)
         let windowHeight = imageHeight + 120
         
         let x = screenFrame.midX - windowWidth / 2

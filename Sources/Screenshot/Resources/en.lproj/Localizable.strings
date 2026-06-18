@@ -29,7 +29,8 @@
 "区域截图" = "Area Screenshot";
 "关闭所有贴图" = "Close All Pins";
 "退出" = "Quit";
-"历史标注再编辑" = "Edit Previous Annotation";
+"已保存并复制原图和AI 定位坐标" = "Saved and copied original image with AI coordinates";
+"历史标注再编辑" = "Image Editing";
 "标注与编辑" = "Annotation & Edit";
 "今天" = "Today";
 "昨天" = "Yesterday";
@@ -53,3 +54,26 @@
 "已删除选中的记录" = "Deleted selected records";
 "常规设置" = "General Settings";
 "开机自动启动" = "Launch at Login";
+
+"提取文字" = "Extract Text";
+"翻译文字" = "Translate Text";
+"钉住到屏幕" = "Pin to Screen";
+"复制原图" = "Copy Original";
+"复制坐标" = "Copy Coordinates";
+"已复制原图" = "Original image copied";
+"已复制坐标" = "Coordinates copied";
+"撤销 (Cmd+Z)" = "Undo (Cmd+Z)";
+"重做 (Cmd+Shift+Z)" = "Redo (Cmd+Shift+Z)";
+"删除选中标注 (Delete)" = "Delete Selected (Delete)";
+"取消 (Esc)" = "Cancel (Esc)";
+"完成并保存" = "Save & Exit";
+"给 AI 定位" = "AI Positioning";
+"请先添加 AI 定位标记" = "Please add AI positioning markers first";
+
+"OCR_Recognized_Text" = "Recognized Text";
+"OCR_No_Results" = "No recognized text";
+"OCR_Copy_Plain_Text" = "Copy Plain Text";
+"OCR_Copy_Full_Info" = "Copy Full Info";
+"OCR_Copied" = "Copied";
+"OCR_Copy_Full_Info_Tooltip" = "Copy full text with coordinates";
+"Saved_And_Copied" = "Saved and copied original image";

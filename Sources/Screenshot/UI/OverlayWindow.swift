@@ -9,6 +9,167 @@ public enum PostCaptureAction: String {
     case none
     case ocr
     case translate
+    case copyToAI
+}
+
+/// 为窗口截图应用圆角透明遮罩，去除 macOS 窗口圆角外的背景残留。
+/// 使用 premultiplied ARGB context + clip 绘制，圆角外区域保持 RGBA 全 0，避免复制到外部应用时出现白边。
+/// - Parameter inset: 向内收缩像素，用于裁掉圆角边缘的半透明白色残留；fallback 去背景时默认 3，最终输出时建议 1。
+func applyWindowCornerMask(to image: CGImage, cornerRadius: CGFloat, inset: CGFloat = 3.0) -> CGImage? {
+    let width = image.width
+    let height = image.height
+    let rect = CGRect(x: 0, y: 0, width: width, height: height)
+
+    // 创建 premultiplied ARGB context，初始完全透明黑色（RGBA 全 0）
+    guard let ctx = CGContext(
+        data: nil,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+    ) else { return nil }
+
+    // 先清空为透明
+    ctx.clear(rect)
+
+    // 绘制圆角裁切路径，向内收缩以裁掉 macOS 窗口边缘的白色残留像素
+    let insetRect = rect.insetBy(dx: inset, dy: inset)
+    let insetRadius = max(0, cornerRadius - inset)
+    let path = CGPath(roundedRect: insetRect, cornerWidth: insetRadius, cornerHeight: insetRadius, transform: nil)
+    ctx.addPath(path)
+    ctx.clip()
+
+    // 在 clip 区域内绘制原图
+    ctx.draw(image, in: rect)
+
+    // 强制 premultiplied alpha，确保透明区域 RGB 归零，避免外部应用显示白边
+    guard let masked = ctx.makeImage() else { return nil }
+    return ensurePremultipliedAlpha(for: masked) ?? masked
+}
+
+/// 将图片绘制到 premultiplied ARGB 透明上下文，强制透明区域的 RGB 归零。
+/// 修复部分渲染路径（如 ImageRenderer）可能将透明像素写成 RGBA(1,1,1,0) 的问题，
+/// 避免复制到微信等外部应用时圆角外出现白色残留。
+func ensurePremultipliedAlpha(for image: CGImage) -> CGImage? {
+    let width = image.width
+    let height = image.height
+    let rect = CGRect(x: 0, y: 0, width: width, height: height)
+
+    guard let ctx = CGContext(
+        data: nil,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+    ) else { return nil }
+
+    ctx.clear(rect)
+    ctx.draw(image, in: rect)
+    return ctx.makeImage()
+}
+
+/// 仅对图像边缘区域做 alpha 阈值清理：alpha 低于阈值的像素强制设为全透明。
+/// 用于清除窗口截图圆角及四边残留的半透明白色像素，避免复制到微信等外部应用时显示白边。
+func thresholdAlphaEdge(for image: CGImage, edgeWidth: Int = 20, threshold: UInt8 = 32) -> CGImage? {
+    let width = image.width
+    let height = image.height
+    guard width > 0, height > 0 else { return nil }
+
+    let bytesPerPixel = 4
+    let bytesPerRow = width * bytesPerPixel
+    var pixels = [UInt8](repeating: 0, count: height * bytesPerRow)
+
+    guard let space = image.colorSpace else { return nil }
+    let bitmapInfo = image.bitmapInfo.rawValue
+    guard let ctx = CGContext(
+        data: &pixels,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: bytesPerRow,
+        space: space,
+        bitmapInfo: bitmapInfo
+    ) else { return nil }
+
+    let rect = CGRect(x: 0, y: 0, width: width, height: height)
+    ctx.draw(image, in: rect)
+
+    // 根据 alpha 位置确定偏移（premultipliedFirst/Last + byteOrder）
+    let alphaInfo = image.alphaInfo
+    let isLittleEndian = (bitmapInfo & CGBitmapInfo.byteOrderMask.rawValue) == CGBitmapInfo.byteOrder32Little.rawValue
+    let alphaOffset: Int
+    switch alphaInfo {
+    case .premultipliedFirst, .first, .noneSkipFirst:
+        alphaOffset = isLittleEndian ? 3 : 0
+    case .premultipliedLast, .last, .noneSkipLast:
+        alphaOffset = isLittleEndian ? 0 : 3
+    default:
+        return nil
+    }
+
+    let edge = min(edgeWidth, min(width, height) / 2)
+    guard edge > 0 else { return ctx.makeImage() }
+
+    for y in 0..<height {
+        let isTopEdge = y < edge
+        let isBottomEdge = y >= height - edge
+        for x in 0..<width {
+            let isLeftEdge = x < edge
+            let isRightEdge = x >= width - edge
+            guard isTopEdge || isBottomEdge || isLeftEdge || isRightEdge else { continue }
+
+            let pixelOffset = y * bytesPerRow + x * bytesPerPixel
+            if pixels[pixelOffset + alphaOffset] < threshold {
+                pixels[pixelOffset] = 0
+                pixels[pixelOffset + 1] = 0
+                pixels[pixelOffset + 2] = 0
+                pixels[pixelOffset + 3] = 0
+            }
+        }
+    }
+
+    guard let newCtx = CGContext(
+        data: &pixels,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: bytesPerRow,
+        space: space,
+        bitmapInfo: bitmapInfo
+    ) else { return nil }
+
+    return newCtx.makeImage()
+}
+
+/// 将 `maskImage` 的 alpha 通道作为透明度蒙版应用到 `image` 上。
+/// 用于标注渲染后恢复窗口截图原有的圆角透明区域，避免 ImageRenderer 等路径在角落填充白色。
+func applyAlphaMask(from maskImage: CGImage, to image: CGImage) -> CGImage? {
+    let width = image.width
+    let height = image.height
+    let rect = CGRect(x: 0, y: 0, width: width, height: height)
+
+    guard width == maskImage.width, height == maskImage.height else { return nil }
+    guard let ctx = CGContext(
+        data: nil,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+    ) else { return nil }
+
+    ctx.clear(rect)
+    ctx.draw(image, in: rect)
+    // 使用 destinationIn 混合模式：保留 image 中对应 maskImage 不透明区域的像素，
+    // 其余区域（maskImage 透明）变为透明
+    ctx.setBlendMode(.destinationIn)
+    ctx.draw(maskImage, in: rect)
+    return ctx.makeImage()
 }
 
 /// 自定义遮罩窗口，重写使其可成为 Key/Main 窗口以接收键盘/鼠标事件 (P3)
@@ -41,7 +202,10 @@ struct MouseTrackingView: NSViewRepresentable {
     var onUndo: (() -> Void)? = nil
     var onRedo: (() -> Void)? = nil
     var onDelete: (() -> Void)? = nil
-    
+    // 用于在 MouseTrackingView 内部检测双击序号圆圈，绕过 SwiftUI 手势被 NSView 拦截的问题
+    var annotations: [AnnotationItem] = []
+    var mapPoint: ((CGPoint) -> CGPoint)? = nil
+
     func makeNSView(context: Context) -> TrackingNSView {
         let view = TrackingNSView()
         view.onDown = onDragStart
@@ -54,6 +218,8 @@ struct MouseTrackingView: NSViewRepresentable {
         view.onUndo = onUndo
         view.onRedo = onRedo
         view.onDelete = onDelete
+        view.annotations = annotations
+        view.mapPoint = mapPoint
         return view
     }
     func updateNSView(_ nsView: TrackingNSView, context: Context) {
@@ -65,6 +231,8 @@ struct MouseTrackingView: NSViewRepresentable {
         nsView.onUndo = onUndo
         nsView.onRedo = onRedo
         nsView.onDelete = onDelete
+        nsView.annotations = annotations
+        nsView.mapPoint = mapPoint
         if nsView.activeTool != activeTool {
             nsView.activeTool = activeTool
             nsView.window?.invalidateCursorRects(for: nsView)
@@ -83,6 +251,8 @@ class TrackingNSView: NSView {
     var onRedo: (() -> Void)?
     var onDelete: (() -> Void)?
     var activeTool: AnnotationToolType = .rectangle
+    var annotations: [AnnotationItem] = []
+    var mapPoint: ((CGPoint) -> CGPoint)? = nil
 
     private var trackingArea: NSTrackingArea?
 
@@ -167,6 +337,21 @@ class TrackingNSView: NSView {
         }
         let point = convert(event.locationInWindow, from: nil)
         onHover?(point)
+
+        // 双击时直接在 MouseTrackingView 内部检测是否命中序号圆圈，
+        // 绕开 SwiftUI 手势被 NSView 拦截的问题。
+        if event.clickCount >= 2, let mapPoint = mapPoint {
+            let localPoint = mapPoint(point)
+            for item in annotations.reversed() where item.type == .numberedText || item.type == .counter {
+                let size = (item.fontSize ?? 16.0) * 1.6
+                let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
+                if circleRect.contains(localPoint) {
+                    NotificationCenter.default.post(name: NSNotification.Name("CounterDoubleTapped"), object: item.id)
+                    return
+                }
+            }
+        }
+
         onDown?(point, event.clickCount)
     }
     
@@ -384,6 +569,7 @@ struct OverlayRootView: View {
     // 窗口吸附状态
     @State private var availableWindows: [WindowInfo] = []
     @State private var hoverWindowRect: CGRect? = nil
+    @State private var hoverWindowID: CGWindowID? = nil
     
     // 裁剪框状态
     @State private var startPoint: CGPoint? = nil
@@ -399,8 +585,9 @@ struct OverlayRootView: View {
     @State private var annotations: [AnnotationItem] = []
     @State private var currentAnnotation: AnnotationItem? = nil
     @State private var editingTextId: UUID? = nil
+    @State private var editingCounterId: UUID? = nil
     @State private var selectedTool: AnnotationToolType = .rectangle
-    @State private var selectedColor: Color = .red
+    @State private var selectedColor: Color = TMDesign.Colors.red
     @State private var selectedFontSize: CGFloat = 16.0
     @State private var selectedLineWidth: CGFloat = 4.0
     @State private var selectedBrushSize: CGFloat = 24.0
@@ -438,11 +625,41 @@ struct OverlayRootView: View {
         annotations = redoStack.removeLast()
     }
     
+    private func reorderCounters(after id: UUID, newString: String) {
+        guard let index = annotations.firstIndex(where: { $0.id == id }) else { return }
+        let counterIndices = annotations.enumerated().compactMap { $0.element.type == .counter || $0.element.type == .numberedText ? $0.offset : nil }
+        guard let position = counterIndices.firstIndex(of: index) else { return }
+
+        prepareForWrite()
+
+        // 仅正整数生效；超出范围时钳位到 [1, total]
+        if let newIntValue = Int(newString), newIntValue > 0 {
+            let total = counterIndices.count
+            let clampedValue = max(1, min(newIntValue, total))
+            let targetPosition = clampedValue - 1
+
+            // 把被编辑项移动到目标序号位置，其余项保持创建顺序，整体重排为 1...N
+            var orderedIds = counterIndices.map { annotations[$0].id }
+            let movedId = orderedIds.remove(at: position)
+            orderedIds.insert(movedId, at: targetPosition)
+            for (newPos, cid) in orderedIds.enumerated() {
+                if let idx = annotations.firstIndex(where: { $0.id == cid }) {
+                    annotations[idx].counterValue = newPos + 1
+                    annotations[idx].customCounterString = nil
+                }
+            }
+        } else {
+            annotations[index].customCounterString = nil
+        }
+    }
+    
     @State private var hasCaptured: Bool = false
     
     @State private var dragStartPos: CGPoint? = nil
     @State private var lastDragPoint: CGPoint? = nil
     @State private var dragStartClickCount: Int = 1
+    @State private var lastClickTime: Double = 0
+    @State private var lastClickAnnotationId: UUID? = nil
     
     /// 动态计算选区
     var selectedRect: CGRect? {
@@ -487,7 +704,7 @@ struct OverlayRootView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: geometry.size.width, height: geometry.size.height)
-                    .onTapGesture(perform: handleTextCommit)
+                    .onTapGesture(perform: commitAllEdits)
                 
                 // 2. 标注层
                 AnnotationCanvasLayer(
@@ -497,8 +714,10 @@ struct OverlayRootView: View {
                     currentAnnotation: currentAnnotation,
                     selectedAnnotationId: selectedAnnotationId,
                     editingTextId: editingTextId,
+                    editingCounterId: editingCounterId,
                     onTextChanged: handleTextChanged,
-                    onTextCommit: handleTextCommit,
+                    onTextCommit: commitAllEdits,
+                    onCounterChanged: handleCounterChanged,
                     onSizeChanged: handleSizeChanged,
                     clipRect: finalRect
                 )
@@ -533,12 +752,21 @@ struct OverlayRootView: View {
                 
                 // 4. 选区边框与尺寸标签
                 if let rect = selectedRect {
-                    // 蓝色精致边框
-                    Rectangle()
-                        .stroke(sessionState == .cropping ? Color.blue : Color.white.opacity(0.5), lineWidth: 1.5)
-                        .frame(width: rect.width, height: rect.height)
-                        .offset(x: rect.minX, y: rect.minY)
-                        .allowsHitTesting(false)
+                    let isTextSelection: Bool = {
+                        guard sessionState != .cropping, let selectedId = selectedAnnotationId else { return false }
+                        guard let foundItem = annotations.first(where: { $0.id == selectedId }) else { return false }
+                        let t = foundItem.type
+                        return t == .text || t == .numberedText
+                    }()
+                    
+                    // 蓝色精致边框 (对于文本类型，在 AnnotationRootView 内部绘制以解决延迟割裂感)
+                    if !isTextSelection {
+                        Rectangle()
+                            .stroke(Color.blue.opacity(sessionState == .cropping ? 1.0 : 0.8), lineWidth: 1.5)
+                            .frame(width: rect.width, height: rect.height)
+                            .offset(x: rect.minX, y: rect.minY)
+                            .allowsHitTesting(false)
+                    }
                     
                     if sessionState == .cropping {
                         // 实时大小气泡标签
@@ -550,11 +778,11 @@ struct OverlayRootView: View {
                             .background(Color.blue.opacity(0.85))
                             .cornerRadius(4)
                             .offset(x: rect.minX, y: rect.minY - 26) // 显示在选区上方
-                    } else {
+                    } else if !isTextSelection {
                         // 绘制 8 个控制柄
                         ForEach(DragHandle.allCases, id: \.self) { handle in
                             Circle()
-                                .fill(Color.white)
+                                .fill(Color.blue)
                                 .frame(width: 8, height: 8)
                                 .shadow(color: .black.opacity(0.3), radius: 2)
                                 .position(handlePosition(for: handle, rect: rect))
@@ -622,14 +850,17 @@ struct OverlayRootView: View {
                     activeTool: selectedTool,
                     onUndo: undo,
                     onRedo: redo,
-                    onDelete: handleDelete
+                    onDelete: handleDelete,
+                    annotations: annotations,
+                    mapPoint: { $0 }
                 )
                 .frame(width: geometry.size.width, height: geometry.size.height)
-                .allowsHitTesting(editingTextId == nil)
-                
+                .allowsHitTesting(editingTextId == nil && editingCounterId == nil)
+
                 // 6. 悬浮工具栏 (仅在编辑状态下显示)
                 if sessionState == .editing, let rect = finalRect {
-                    let toolbarWidth: CGFloat = 650.0 // 估计的紧凑工具栏宽度
+                    let expectedWidth: CGFloat = 860.0
+                    let toolbarWidth = min(expectedWidth, geometry.size.width - 24.0) // 确保不超屏幕
                     let toolbarHeight: CGFloat = 90.0
                     let padding: CGFloat = 12.0
                     
@@ -647,6 +878,10 @@ struct OverlayRootView: View {
                         hasUndo: !undoStack.isEmpty,
                         hasRedo: !redoStack.isEmpty,
                         hasSelection: selectedAnnotationId != nil,
+                        isTextSelected: {
+                            guard let type = annotations.first(where: { $0.id == selectedAnnotationId })?.type else { return false }
+                            return type == .text || type == .numberedText || type == .rectText
+                        }(),
                         onUndo: undo,
                         onRedo: redo,
                         onDelete: handleDelete,
@@ -655,9 +890,13 @@ struct OverlayRootView: View {
                         onTranslate: { exportAndClose(action: .translate) },
                         onCancel: handleCancel,
                         onConfirm: { exportAndClose(action: .none) },
-                        onGenerateDragURL: { return generateDragURL() }
+                        onGenerateDragURL: generateDragURL,
+                        isEditingText: editingTextId != nil || editingCounterId != nil,
+                        aiMarkerCount: annotations.filter({ $0.type == .aiMarker }).count,
+                        onExportImage: { exportToAI(copyImage: true, copyCoords: false) },
+                        onExportCoords: { exportToAI(copyImage: false, copyCoords: true) }
                     )
-                    .fixedSize()
+                    .frame(width: toolbarWidth)
                     .position(x: tbX, y: tbY)
                 }
                 
@@ -667,6 +906,7 @@ struct OverlayRootView: View {
                         baseImage: capture.image,
                         hoverPoint: hoverPoint,
                         scaleFactor: capture.screen.backingScaleFactor,
+                        selectedColor: sessionState == .cropping ? .blue : selectedColor,
                         onCopyColor: {
                             onCanceled()
                         }
@@ -679,7 +919,8 @@ struct OverlayRootView: View {
                 }
                 
                 // 8. PSD-style 圆形画笔光标
-                if isHoveringCanvas && (selectedTool == .pencil || selectedTool == .highlighter || selectedTool == .blur || selectedTool == .mosaic) {
+                let isBrush = selectedTool == .pencil || selectedTool == .highlighter || selectedTool == .blur || selectedTool == .mosaic
+                if isHoveringCanvas && isBrush {
                     let brushSize: CGFloat = {
                         if selectedTool == .pencil {
                             return selectedLineWidth
@@ -724,6 +965,22 @@ struct OverlayRootView: View {
         .onChange(of: selectedAnnotationId) { newId in
             handleSelectionChange(to: newId)
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AnnotationDoubleTapped"))) { notification in
+            if let id = notification.object as? UUID {
+                self.prepareForWrite()
+                self.editingTextId = id
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("CounterDoubleTapped"))) { notification in
+            if let id = notification.object as? UUID {
+                self.editingCounterId = id
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: commitTextEditNotification)) { _ in
+            if self.editingTextId != nil || self.editingCounterId != nil {
+                self.commitAllEdits()
+            }
+        }
     }
     
     // MARK: - Interaction Handlers
@@ -737,16 +994,22 @@ struct OverlayRootView: View {
         guard hitRect.contains(point) else { return nil }
         
         let p = point
-        let isNear = { (val: CGFloat, target: CGFloat) in abs(val - target) <= self.handleHitZone }
+        let hitZoneX = min(self.handleHitZone, max(5, rect.width / 3))
+        let hitZoneY = min(self.handleHitZone, max(5, rect.height / 3))
         
-        if isNear(p.x, rect.minX) && isNear(p.y, rect.minY) { return .topLeft }
-        if isNear(p.x, rect.maxX) && isNear(p.y, rect.minY) { return .topRight }
-        if isNear(p.x, rect.minX) && isNear(p.y, rect.maxY) { return .bottomLeft }
-        if isNear(p.x, rect.maxX) && isNear(p.y, rect.maxY) { return .bottomRight }
-        if isNear(p.x, rect.minX) { return .left }
-        if isNear(p.x, rect.maxX) { return .right }
-        if isNear(p.y, rect.minY) { return .top }
-        if isNear(p.y, rect.maxY) { return .bottom }
+        let isNearX = { (val: CGFloat, target: CGFloat) in abs(val - target) <= hitZoneX }
+        let isNearY = { (val: CGFloat, target: CGFloat) in abs(val - target) <= hitZoneY }
+        let isNearXEdge = { (val: CGFloat, target: CGFloat) in abs(val - target) <= self.handleHitZone }
+        let isNearYEdge = { (val: CGFloat, target: CGFloat) in abs(val - target) <= self.handleHitZone }
+        
+        if isNearX(p.x, rect.minX) && isNearY(p.y, rect.minY) { return .topLeft }
+        if isNearX(p.x, rect.maxX) && isNearY(p.y, rect.minY) { return .topRight }
+        if isNearX(p.x, rect.minX) && isNearY(p.y, rect.maxY) { return .bottomLeft }
+        if isNearX(p.x, rect.maxX) && isNearY(p.y, rect.maxY) { return .bottomRight }
+        if isNearXEdge(p.x, rect.minX) { return .left }
+        if isNearXEdge(p.x, rect.maxX) { return .right }
+        if isNearYEdge(p.y, rect.minY) { return .top }
+        if isNearYEdge(p.y, rect.maxY) { return .bottom }
         return nil
     }
     
@@ -764,15 +1027,34 @@ struct OverlayRootView: View {
             }
         }
         
-        // 先检查是否点中了某个控制柄
+        // 先检查是否点中了某个控制柄（文本框控制柄）
         if let selectedId = selectedAnnotationId,
            let index = annotations.firstIndex(where: { $0.id == selectedId }) {
-            let itemRect = annotations[index].rect
+            let item = annotations[index]
+            let itemRect = item.rect
+            let isText = item.type == .text || item.type == .numberedText || item.type == .rectText
+
             if let handle = hitTestHandle(point: point, rect: itemRect) {
-                return (selectedId, handle)
+                if isText {
+                    let hitZoneX: CGFloat = 10.0
+                    if abs(point.x - itemRect.minX) <= hitZoneX { return (selectedId, .left) }
+                    if abs(point.x - itemRect.maxX) <= hitZoneX { return (selectedId, .right) }
+                    // 忽略其它控制柄，允许点击中心拖拽整体
+                    return (selectedId, nil)
+                } else {
+                    return (selectedId, handle)
+                }
             }
         }
-        
+
+        // 检查选中的 RectText 的矩形框（优先级高于文本框，便于拖拽整体）
+        if let selectedId = selectedAnnotationId,
+           let index = annotations.firstIndex(where: { $0.id == selectedId }),
+           let rectBounds = rectTextBounds(annotations[index]),
+           rectBounds.contains(point) {
+            return (selectedId, .calloutOrigin)
+        }
+
         // 检查未选中的 NumberedText 的起始点圆圈
         for item in annotations.reversed() {
             if item.type == .numberedText {
@@ -783,8 +1065,15 @@ struct OverlayRootView: View {
                 }
             }
         }
-        
-        // 再检查是否点中了某个标注的包围盒
+
+        // 检查未选中的 RectText 的矩形框
+        for item in annotations.reversed() {
+            if let rectBounds = rectTextBounds(item), rectBounds.contains(point) {
+                return (item.id, .calloutOrigin)
+            }
+        }
+
+        // 再检查是否点中了某个标注的包围盒（文本框或其他形状）
         for item in annotations.reversed() {
             if item.rect.contains(point) {
                 return (item.id, nil)
@@ -796,46 +1085,11 @@ struct OverlayRootView: View {
     
     private func handleHover(_ point: CGPoint) {
         if sessionState == .editing {
-            if let (_, handle) = hitTestAnnotation(point: point) {
-                if handle == .calloutOrigin {
-                    NSCursor.pointingHand.set()
-                } else if handle != nil {
-                    switch handle! {
-                    case .left, .right: NSCursor.resizeLeftRight.set()
-                    case .top, .bottom: NSCursor.resizeUpDown.set()
-                    case .topLeft, .bottomRight: NSCursor.crosshair.set()
-                    case .topRight, .bottomLeft: NSCursor.crosshair.set()
-                    case .calloutOrigin: NSCursor.arrow.set()
-                    }
-                } else {
-                    NSCursor.openHand.set()
-                }
-                return
-            }
-            
-            // 3. Check finalRect handles
-            if let rect = finalRect, let handle = hitTestHandle(point: point, rect: rect) {
-                switch handle {
-                case .left, .right: NSCursor.resizeLeftRight.set()
-                case .top, .bottom: NSCursor.resizeUpDown.set()
-                case .topLeft, .bottomRight: NSCursor.crosshair.set()
-                case .topRight, .bottomLeft: NSCursor.crosshair.set()
-                case .calloutOrigin: NSCursor.arrow.set()
-                }
-                return
-            }
-            
-            // 4. Outside finalRect area should be arrow
-            if let rect = finalRect, !rect.contains(point) {
-                NSCursor.arrow.set()
-                return
-            }
-            
             let isBrush = selectedTool == .pencil || selectedTool == .highlighter || selectedTool == .blur || selectedTool == .mosaic
-            if isBrush {
+            if isBrush && finalRect?.contains(point) == true {
                 NSCursor.transparent.set()
             } else {
-                NSCursor.crosshair.set()
+                NSCursor.arrow.set()
             }
         } else {
             // sessionState == .cropping
@@ -843,9 +1097,13 @@ struct OverlayRootView: View {
             if let win = availableWindows.first(where: { $0.rect.contains(point) }) {
                 if hoverWindowRect != win.rect {
                     hoverWindowRect = win.rect
+                    hoverWindowID = win.windowID
                 }
             } else {
-                if hoverWindowRect != nil { hoverWindowRect = nil }
+                if hoverWindowRect != nil { 
+                    hoverWindowRect = nil
+                    hoverWindowID = nil
+                }
             }
             NSCursor.crosshair.set()
         }
@@ -863,13 +1121,37 @@ struct OverlayRootView: View {
         } else {
             // 1. Check if clicking on annotation
             if let (id, handle) = hitTestAnnotation(point: point) {
+                // 如果点中其他元素，先统一提交当前编辑态
+                if (editingTextId != nil && editingTextId != id) || (editingCounterId != nil && editingCounterId != id) {
+                    commitAllEdits()
+                }
+
                 prepareForWrite()
                 selectedAnnotationId = id
                 annotationActiveHandle = handle
                 annotationInitialItem = annotations.first(where: { $0.id == id })
                 annotationDragStartPoint = point
+                
+                // 双击直接进编辑态（基于时间间隔，比 event.clickCount 更可靠）
+                let now = ProcessInfo.processInfo.systemUptime
+                let clickInterval = now - lastClickTime
+                if handle == nil,
+                   lastClickAnnotationId == id,
+                   clickInterval < 0.3,
+                   let index = annotations.firstIndex(where: { $0.id == id }) {
+                    let type = annotations[index].type
+                    if type == .text || type == .numberedText || type == .rectText {
+                        editingTextId = id
+                    } else if type == .counter {
+                        editingCounterId = id
+                    }
+                }
+                lastClickTime = now
+                lastClickAnnotationId = id
                 return
             }
+            
+            lastClickAnnotationId = nil
             
             // 3. Check crop box handles (Lowest Priority)
             if let rect = finalRect, let handle = hitTestHandle(point: point, rect: rect) {
@@ -884,7 +1166,7 @@ struct OverlayRootView: View {
             selectedAnnotationId = nil
             
             if editingTextId != nil {
-                editingTextId = nil
+                handleTextCommit()
             }
             
             if selectedTool == .text || selectedTool == .numberedText {
@@ -909,6 +1191,7 @@ struct OverlayRootView: View {
                     counterValue: cValue
                 )
                 annotations.append(textItem)
+                selectedAnnotationId = textItem.id
                 editingTextId = textItem.id
             } else {
                 if currentAnnotation == nil {
@@ -916,6 +1199,9 @@ struct OverlayRootView: View {
                     var cValue: Int? = nil
                     if selectedTool == .counter || selectedTool == .numberedText {
                         let existingCount = annotations.filter { $0.type == .counter || $0.type == .numberedText }.count
+                        cValue = existingCount + 1
+                    } else if selectedTool == .aiMarker {
+                        let existingCount = annotations.filter { $0.type == .aiMarker }.count
                         cValue = existingCount + 1
                     }
                     
@@ -930,6 +1216,9 @@ struct OverlayRootView: View {
                         counterValue: cValue
                     )
                     
+                    if selectedTool == .rectText {
+                        newAnnotation.points = [point, point]
+                    }
                     if newAnnotation.isFreehandTool {
                         newAnnotation.points = [point]
                     }
@@ -937,10 +1226,15 @@ struct OverlayRootView: View {
                     currentAnnotation = newAnnotation
                 }
                 
-                if currentAnnotation?.isFreehandTool == true {
+                if currentAnnotation?.type == .rectText {
+                    currentAnnotation?.points?[1] = point
+                    currentAnnotation?.endPoint = point
+                } else if currentAnnotation?.isFreehandTool == true {
                     currentAnnotation?.points?.append(point)
+                    currentAnnotation?.endPoint = point
+                } else {
+                    currentAnnotation?.endPoint = point
                 }
-                currentAnnotation?.endPoint = point
             }
         }
     }
@@ -1002,8 +1296,8 @@ struct OverlayRootView: View {
                     updatedItem.resize(to: newRect, from: initRect)
                 } else {
                     // Move
-                    if updatedItem.type == .numberedText {
-                        let oldOffset = updatedItem.calloutOffset ?? CGSize(width: 16.0, height: -45.0)
+                    if updatedItem.type == .numberedText || updatedItem.type == .rectText {
+                        let oldOffset = updatedItem.calloutOffset ?? (updatedItem.type == .rectText ? .zero : CGSize(width: 16.0, height: -45.0))
                         updatedItem.calloutOffset = CGSize(width: oldOffset.width + dx, height: oldOffset.height + dy)
                         updatedItem.endPoint = CGPoint(x: updatedItem.endPoint.x + dx, y: updatedItem.endPoint.y + dy)
                     } else {
@@ -1072,6 +1366,9 @@ struct OverlayRootView: View {
                         currentAnnotation?.points?.append(point)
                         currentAnnotation?.endPoint = point
                     }
+                } else if currentAnnotation?.type == .rectText {
+                    currentAnnotation?.points?[1] = point
+                    currentAnnotation?.endPoint = point
                 } else {
                     currentAnnotation?.endPoint = point
                 }
@@ -1113,10 +1410,13 @@ struct OverlayRootView: View {
                let index = annotations.firstIndex(where: { $0.id == selectedId }) {
                 let dx = abs(lastPos.x - startPos.x)
                 let dy = abs(lastPos.y - startPos.y)
-                let isText = annotations[index].type == .text || annotations[index].type == .numberedText
+                let isText = annotations[index].type == .text || annotations[index].type == .numberedText || annotations[index].type == .rectText
+                let isCounter = annotations[index].type == .counter
                 if isText && dx < 5 && dy < 5 && dragStartClickCount >= 2 {
                     prepareForWrite()
                     editingTextId = selectedId
+                } else if isCounter && dx < 5 && dy < 5 && dragStartClickCount >= 2 {
+                    editingCounterId = selectedId
                 }
             }
             dragStartPos = nil
@@ -1159,6 +1459,23 @@ struct OverlayRootView: View {
                             shouldSave = true
                         }
                     }
+                    if shouldSave, final.type == .rectText, let idx = annotations.indices.last {
+                        let p0 = annotations[idx].points?[0] ?? annotations[idx].startPoint
+                        let p1 = annotations[idx].points?[1] ?? annotations[idx].endPoint
+                        let minX = min(p0.x, p1.x)
+                        let maxX = max(p0.x, p1.x)
+                        let minY = min(p0.y, p1.y)
+                        let maxY = max(p0.y, p1.y)
+                        let rectWidth = maxX - minX
+                        _ = maxY - minY
+                        annotations[idx].points = [CGPoint(x: minX, y: minY), CGPoint(x: maxX, y: maxY)]
+                        annotations[idx].startPoint = CGPoint(x: minX, y: minY)
+                        let offset = CGSize(width: rectWidth + 16, height: 0)
+                        annotations[idx].calloutOffset = offset
+                        annotations[idx].endPoint = CGPoint(x: minX + offset.width + 120, y: minY + offset.height + 30)
+                        selectedAnnotationId = annotations[idx].id
+                        editingTextId = annotations[idx].id
+                    }
                     if !shouldSave {
                         if !undoStack.isEmpty {
                             _ = undoStack.removeLast()
@@ -1197,7 +1514,7 @@ struct OverlayRootView: View {
             }
         }
         
-        if let newStyle = style, (item.type == .text || item.type == .numberedText) {
+        if let newStyle = style, (item.type == .text || item.type == .numberedText || item.type == .rectText) {
             if item.fontStyle != newStyle {
                 item.fontStyle = newStyle
                 changed = true
@@ -1214,7 +1531,7 @@ struct OverlayRootView: View {
         guard let id = newId, let item = annotations.firstIndex(where: { $0.id == id }).map({ annotations[$0] }) else { return }
         
         selectedColor = item.color
-        if item.type == .text || item.type == .numberedText || item.type == .counter {
+        if item.type == .text || item.type == .numberedText || item.type == .rectText || item.type == .counter {
             selectedFontSize = item.fontSize ?? 16.0
         } else if item.type == .highlighter || item.type == .blur || item.type == .mosaic {
             selectedBrushSize = item.lineWidth
@@ -1244,23 +1561,52 @@ struct OverlayRootView: View {
         }
     }
     
+    private func handleCounterChanged(id: UUID, newString: String) {
+        if let index = annotations.firstIndex(where: { $0.id == id }) {
+            annotations[index].customCounterString = newString
+        }
+    }
+    
     private func handleTextCommit() {
         if let index = annotations.firstIndex(where: { $0.id == editingTextId }) {
             let text = annotations[index].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if text.isEmpty {
                 prepareForWrite()
                 annotations.remove(at: index)
+            } else {
+                let item = annotations[index]
+                let fontSize = item.fontSize ?? 16.0
+                let singleLineHeight = fontSize * 1.2 + 16
+                if item.customWidth == nil,
+                   (item.text ?? "").contains("\n") || item.rect.height > singleLineHeight + 4 {
+                    annotations[index].customWidth = item.rect.width
+                }
             }
         }
+        if let currentEditingCounter = editingCounterId {
+            if let index = annotations.firstIndex(where: { $0.id == currentEditingCounter }) {
+                let newStr = annotations[index].customCounterString ?? ""
+                reorderCounters(after: currentEditingCounter, newString: newStr)
+            }
+            editingCounterId = nil
+        }
         editingTextId = nil
+    }
+
+    /// 统一提交所有编辑态：只处理数据与排序。
+    /// 辞去第一响应者交由 AutoSizingTextView.updateNSView 在编辑态结束时安全处理，
+    /// 避免在 async 通知路径中访问已释放的 NSTextView 导致闪崩。
+    private func commitAllEdits() {
+        guard editingTextId != nil || editingCounterId != nil else { return }
+        handleTextCommit()
     }
 
     private func handleSizeChanged(id: UUID, size: CGSize) {
         DispatchQueue.main.async {
             if let index = annotations.firstIndex(where: { $0.id == id }) {
                 let item = annotations[index]
-                if item.type == .numberedText {
-                    let offset = item.calloutOffset ?? CGSize(width: 16.0, height: -45.0)
+                if item.type == .numberedText || item.type == .rectText {
+                    let offset = item.calloutOffset ?? (item.type == .rectText ? .zero : CGSize(width: 16.0, height: -45.0))
                     let originX = item.startPoint.x + offset.width
                     let originY = item.startPoint.y + offset.height
                     let endX = originX + size.width
@@ -1307,15 +1653,9 @@ struct OverlayRootView: View {
     
     private func handleSelectedToolChanged(_ newTool: AnnotationToolType) {
         NotificationCenter.default.post(name: NSNotification.Name("SelectedToolChanged"), object: newTool)
-        
-        if editingTextId != nil {
-            if let index = annotations.firstIndex(where: { $0.id == editingTextId }) {
-                let text = annotations[index].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                if text.isEmpty {
-                    annotations.remove(at: index)
-                }
-            }
-            editingTextId = nil
+        // 通过通知异步提交，避免 closure 直接捕获 OverlayRootView 实例方法导致闪崩
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: commitTextEditNotification, object: nil)
         }
     }
     // MARK: - Export
@@ -1332,32 +1672,147 @@ struct OverlayRootView: View {
             height: rect.height * scale
         )
         
-        let cleanCropped = capture.image.cropping(to: cropRect)!
+        var cleanCropped = capture.image.cropping(to: cropRect)!
         let shiftedAnnotations = offsetAnnotations(annotations, by: rect.origin)
         
-        if shiftedAnnotations.isEmpty {
-            onCaptured(cleanCropped, cleanCropped, shiftedAnnotations, action)
+        let isWindowSnap = (hoverWindowRect != nil && rect == hoverWindowRect)
+        let windowCornerRadius: CGFloat = 14.0 * scale
+
+        // 窗口吸附截图：优先使用 CGWindowListCreateImage 获取原生透明窗口（无阴影），
+        // 再统一应用硬圆角遮罩，把圆角处半透明白/灰像素彻底清除为 RGBA(0,0,0,0)。
+        if isWindowSnap {
+            if let winID = hoverWindowID {
+                let options: CGWindowImageOption = [.boundsIgnoreFraming, .bestResolution]
+                if let windowImage = CGWindowListCreateImage(.null, .optionIncludingWindow, winID, options) {
+                    cleanCropped = windowImage
+                }
+            }
+            cleanCropped = applyWindowCornerMask(to: cleanCropped, cornerRadius: windowCornerRadius, inset: 1.0) ?? cleanCropped
+        }
+
+        // 普通确认操作排除 AI 定位标记；但复制到 AI 时需要保留所有标注以便继续编辑
+        let exportAnnotations = action == .copyToAI ? shiftedAnnotations : shiftedAnnotations.filter { $0.type != .aiMarker }
+
+        if exportAnnotations.isEmpty {
+            onCaptured(cleanCropped, cleanCropped, exportAnnotations, action)
             return
         }
-        
+
         let exportView = AnnotationCanvasLayer(
             image: cleanCropped,
             displaySize: CGSize(width: rect.width, height: rect.height),
-            annotations: shiftedAnnotations,
-            currentAnnotation: nil
+            annotations: exportAnnotations,
+            currentAnnotation: nil,
+            cornerRadius: 0
         )
         let renderer = ImageRenderer(content: exportView)
         renderer.scale = scale
-        
-        guard let finalCropped = renderer.cgImage else {
+
+        guard let rendered = renderer.cgImage,
+              var finalCropped = ensurePremultipliedAlpha(for: rendered) else {
             print("❌ [OverlayView] 标注合并渲染失败")
             onCanceled()
             return
         }
-        
-        onCaptured(finalCropped, cleanCropped, shiftedAnnotations, action)
+
+        // 窗口截图：对最终渲染结果再次应用硬圆角遮罩，确保圆角外无白色残留
+        if isWindowSnap {
+            finalCropped = applyWindowCornerMask(to: finalCropped, cornerRadius: windowCornerRadius, inset: 1.0) ?? finalCropped
+        }
+
+        onCaptured(finalCropped, cleanCropped, exportAnnotations, action)
     }
     
+    @MainActor
+    private func exportToAI(copyImage: Bool, copyCoords: Bool) {
+        guard let rect = finalRect else { return }
+        // 注意：不设置 hasCaptured = true，也不调用 onCaptured，让 overlay 保持打开
+        // 用户可复制多项后再手动确认关闭
+        
+        let scale = capture.screen.backingScaleFactor
+        let cropRect = CGRect(
+            x: rect.origin.x * scale,
+            y: rect.origin.y * scale,
+            width: rect.width * scale,
+            height: rect.height * scale
+        )
+        
+        var cleanCropped = capture.image.cropping(to: cropRect)!
+        let shiftedAnnotations = offsetAnnotations(annotations, by: rect.origin)
+        let aiMarkers = shiftedAnnotations.filter { $0.type == .aiMarker }
+        
+        // 窗口吸附截图：与 exportAndClose / 保存逻辑完全一致
+        let isWindowSnap = (hoverWindowRect != nil && rect == hoverWindowRect)
+        let windowCornerRadius: CGFloat = 14.0 * scale
+        if isWindowSnap, let winID = hoverWindowID {
+            let options: CGWindowImageOption = [.boundsIgnoreFraming, .bestResolution]
+            if let windowImage = CGWindowListCreateImage(.null, .optionIncludingWindow, winID, options) {
+                cleanCropped = windowImage
+            }
+        }
+        // 窗口截图：应用硬圆角遮罩，清除圆角处半透明白边后再写入剪贴板/历史
+        if isWindowSnap {
+            cleanCropped = applyWindowCornerMask(to: cleanCropped, cornerRadius: windowCornerRadius, inset: 1.0) ?? cleanCropped
+        }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        
+        let pbItem = NSPasteboardItem()
+        var textOutput = ""
+        
+        // 使用与保存文件一致的 CGImageDestination 生成 PNG，确保 alpha 通道不被丢弃
+        var pngDataForClipboard: Data? = nil
+        if copyImage {
+            pngDataForClipboard = CaptureEngine.shared.pngData(from: cleanCropped)
+            if let pngData = pngDataForClipboard {
+                pbItem.setData(pngData, forType: .png)
+            }
+        }
+
+        if copyCoords && !aiMarkers.isEmpty {
+            textOutput = LanguageManager.shared.localizedString(forKey: "以下是在原图上圈出的目标元素坐标 [xmin, ymin, xmax, ymax]，请逐一根据坐标和关联的要求修改：") + "\n"
+            for marker in aiMarkers.sorted(by: { ($0.counterValue ?? 0) < ($1.counterValue ?? 0) }) {
+                let idStr = marker.displayCounterString
+                let r = marker.rect
+                let absStr = "[\(Int(r.minX * scale)), \(Int(r.minY * scale)), \(Int(r.maxX * scale)), \(Int(r.maxY * scale))]"
+                textOutput += "\(idStr). \(absStr)\n"
+            }
+            pbItem.setString(textOutput, forType: .string)
+        }
+        
+        if copyImage && copyCoords && !textOutput.isEmpty {
+            let attrStr = NSMutableAttributedString()
+            let attachment = NSTextAttachment()
+            if let pngData = pngDataForClipboard {
+                attachment.image = NSImage(data: pngData)
+            } else {
+                attachment.image = NSImage(cgImage: cleanCropped, size: NSSize(width: cleanCropped.width, height: cleanCropped.height))
+            }
+            attrStr.append(NSAttributedString(attachment: attachment))
+            attrStr.append(NSAttributedString(string: "\n\n" + textOutput))
+            if let rtfdData = attrStr.rtfd(from: NSRange(location: 0, length: attrStr.length), documentAttributes: [:]) {
+                pbItem.setData(rtfdData, forType: .rtfd)
+            }
+        }
+        
+        pasteboard.writeObjects([pbItem])
+
+        // Toast 反馈
+        let toastKey: String
+        if copyImage && copyCoords {
+            toastKey = "已保存并复制原图和AI 定位坐标"
+        } else if copyImage {
+            toastKey = "已保存并复制原图"
+        } else {
+            toastKey = "已保存并复制 AI 定位坐标"
+        }
+        ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: toastKey))
+        print("📋 [OverlayView] AI 导出完成: image=\(copyImage), coords=\(copyCoords)")
+        
+        // 复制后保存并切换为图像编辑窗口
+        exportAndClose(action: .copyToAI)
+    }
     @MainActor
     private func generateDragURL() -> URL? {
         guard !hasCaptured, let rect = finalRect else { return nil }
@@ -1370,20 +1825,39 @@ struct OverlayRootView: View {
             height: rect.height * scale
         )
         
-        let cleanCropped = capture.image.cropping(to: cropRect)!
+        var cleanCropped = capture.image.cropping(to: cropRect)!
+        let isWindowSnap = (hoverWindowRect != nil && rect == hoverWindowRect)
+        let windowCornerRadius: CGFloat = 14.0 * scale
+
+        // 窗口吸附截图：优先使用 CGWindowListCreateImage 获取原生透明窗口（无阴影），并应用硬圆角遮罩
+        if isWindowSnap, let winID = hoverWindowID {
+            let options: CGWindowImageOption = [.boundsIgnoreFraming, .bestResolution]
+            if let windowImage = CGWindowListCreateImage(.null, .optionIncludingWindow, winID, options) {
+                cleanCropped = windowImage
+            }
+            cleanCropped = applyWindowCornerMask(to: cleanCropped, cornerRadius: windowCornerRadius, inset: 1.0) ?? cleanCropped
+        }
+
         let shiftedAnnotations = offsetAnnotations(annotations, by: rect.origin)
         
         let exportView = AnnotationCanvasLayer(
             image: cleanCropped,
             displaySize: CGSize(width: rect.width, height: rect.height),
             annotations: shiftedAnnotations,
-            currentAnnotation: nil
+            currentAnnotation: nil,
+            cornerRadius: 0
         )
         let renderer = ImageRenderer(content: exportView)
         renderer.scale = scale
         
-        guard let finalCropped = renderer.cgImage else {
+        guard let rendered = renderer.cgImage,
+              var finalCropped = ensurePremultipliedAlpha(for: rendered) else {
             return nil
+        }
+
+        // 窗口截图：对最终渲染结果应用硬圆角遮罩，确保拖拽出的文件圆角无白边
+        if isWindowSnap {
+            finalCropped = applyWindowCornerMask(to: finalCropped, cornerRadius: windowCornerRadius, inset: 1.0) ?? finalCropped
         }
         
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("Screenshot_\(UUID().uuidString).png")
@@ -1403,19 +1877,42 @@ struct OverlayRootView: View {
             height: rect.height * scale
         )
         
-        let cleanCropped = capture.image.cropping(to: cropRect)!
+        var cleanCropped = capture.image.cropping(to: cropRect)!
+        let isWindowSnap = (hoverWindowRect != nil && rect == hoverWindowRect)
+        let windowCornerRadius: CGFloat = 14.0 * scale
+        // 窗口吸附截图：优先使用 CGWindowListCreateImage 获取原生透明窗口（无阴影），并应用硬圆角遮罩
+        if isWindowSnap, let winID = hoverWindowID {
+            let options: CGWindowImageOption = [.boundsIgnoreFraming, .bestResolution]
+            if let windowImage = CGWindowListCreateImage(.null, .optionIncludingWindow, winID, options) {
+                cleanCropped = windowImage
+            }
+            cleanCropped = applyWindowCornerMask(to: cleanCropped, cornerRadius: windowCornerRadius, inset: 1.0) ?? cleanCropped
+        }
+
         let shiftedAnnotations = offsetAnnotations(annotations, by: rect.origin)
+        
+        if shiftedAnnotations.isEmpty {
+            PinManager.shared.pin(image: cleanCropped)
+            onCaptured(cleanCropped, cleanCropped, shiftedAnnotations, .none)
+            return
+        }
         
         let exportView = AnnotationCanvasLayer(
             image: cleanCropped,
             displaySize: CGSize(width: rect.width, height: rect.height),
             annotations: shiftedAnnotations,
-            currentAnnotation: nil
+            currentAnnotation: nil,
+            cornerRadius: 0
         )
         let renderer = ImageRenderer(content: exportView)
         renderer.scale = scale
         
-        if let cgImage = renderer.cgImage {
+        if let rendered = renderer.cgImage,
+           var cgImage = ensurePremultipliedAlpha(for: rendered) {
+            // 窗口截图：对最终渲染结果应用硬圆角遮罩，确保贴图圆角无白边
+            if isWindowSnap {
+                cgImage = applyWindowCornerMask(to: cgImage, cornerRadius: windowCornerRadius, inset: 1.0) ?? cgImage
+            }
             PinManager.shared.pin(image: cgImage)
             onCaptured(cgImage, cleanCropped, shiftedAnnotations, .none)
         }
@@ -1432,12 +1929,13 @@ struct UnifiedToolbarView: View {
     @Binding var selectedTextStyle: TextStyle
     
     var showTextStylePicker: Bool {
-        selectedTool == .text || selectedTool == .numberedText
+        selectedTool == .text || selectedTool == .numberedText || selectedTool == .rectText
     }
     
     let hasUndo: Bool
     let hasRedo: Bool
     let hasSelection: Bool
+    var isTextSelected: Bool
     let onUndo: () -> Void
     let onRedo: () -> Void
     let onDelete: () -> Void
@@ -1447,8 +1945,13 @@ struct UnifiedToolbarView: View {
     let onCancel: () -> Void
     let onConfirm: () -> Void
     let onGenerateDragURL: (@MainActor () -> URL?)?
+
+    var isEditingText: Bool = false
+    var aiMarkerCount: Int = 0
+    var onExportImage: (() -> Void)? = nil
+    var onExportCoords: (() -> Void)? = nil
     
-    let colors: [Color] = [.red, .blue, .green, .yellow, .white, .black]
+    let colors: [Color] = TMDesign.Colors.toolbarPalette
     
     var body: some View {
         VStack(spacing: 0) {
@@ -1456,23 +1959,23 @@ struct UnifiedToolbarView: View {
             HStack(spacing: 12) {
                 // 1. Shapes 组
                 HStack(spacing: 6) {
-                    GroupButton(tool: .rectangle, selected: $selectedTool)
-                    GroupButton(tool: .filledRectangle, selected: $selectedTool)
-                    GroupButton(tool: .ellipse, selected: $selectedTool)
-                    GroupButton(tool: .line, selected: $selectedTool)
-                    GroupButton(tool: .arrow, selected: $selectedTool)
+                    let shapeGroup: [AnnotationToolType] = [.rectangle, .filledRectangle, .ellipse, .line, .arrow]
+                    ForEach(shapeGroup, id: \.self) { tool in
+                        GroupButton(tool: tool, selected: $selectedTool)
+                    }
                 }
                 
-                Text("|").foregroundColor(.gray.opacity(0.4)).padding(.horizontal, 2)
+                Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 1, height: 16).padding(.horizontal, 2)
                 
                 // 2. Text 组
                 HStack(spacing: 6) {
                     GroupButton(tool: .text, selected: $selectedTool)
                     GroupButton(tool: .numberedText, selected: $selectedTool)
+                    GroupButton(tool: .rectText, selected: $selectedTool)
                     GroupButton(tool: .counter, selected: $selectedTool)
                 }
                 
-                Text("|").foregroundColor(.gray.opacity(0.4)).padding(.horizontal, 2)
+                Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 1, height: 16).padding(.horizontal, 2)
                 
                 // 3. Effects 组
                 HStack(spacing: 6) {
@@ -1483,42 +1986,56 @@ struct UnifiedToolbarView: View {
                     GroupButton(tool: .spotlight, selected: $selectedTool)
                 }
                 
-                Spacer() // 将操作组推到最右侧
+                Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 1, height: 16).padding(.horizontal, 2)
                 
-                // 4. 确认取消组
-                HStack(spacing: 8) {
-                    // Cancel
-                    Button(action: onCancel) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.white)
-                            .padding(6)
-                            .background(Color.red.opacity(0.8))
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .help("取消 (Esc)")
+                // 4. AI 组：给 AI 定位按钮 + 导出下拉菜单（视觉强关联）
+                HStack(spacing: 6) {
+                    GroupButton(tool: .aiMarker, selected: $selectedTool)
                     
-                    // Confirm
-                    Button(action: onConfirm) {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.white)
-                            .padding(6)
-                            .background(Color.green)
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .help("完成并保存")
+                    // 导出下拉菜单与 AI 按钮紧邻，形成视觉关联
+                    // 有标注时：紫渐变 + 计数角标；无标注时：灰色背景
+                    ExportDropdownButton(
+                        onExportImage: onExportImage,
+                        onExportCoords: onExportCoords,
+                        canExportCoords: aiMarkerCount > 0,
+                        aiMarkerCount: aiMarkerCount
+                    )
+                }
+                
+                Spacer() // 将右侧内容推到右边
+
+                Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 1, height: 16).padding(.horizontal, 2)
+
+                // 撤销和重做
+                HStack(spacing: 8) {
+                    IconButtonWithTooltip(
+                        icon: "arrow.uturn.backward",
+                        tooltipKey: "撤销 (Cmd+Z)",
+                        action: onUndo,
+                        isEnabled: hasUndo,
+                        iconSize: 13,
+                        foregroundColor: hasUndo ? .white : .primary.opacity(0.7),
+                        backgroundColor: hasUndo ? Color.blue.opacity(0.85) : Color.gray.opacity(0.1)
+                    )
+
+                    IconButtonWithTooltip(
+                        icon: "arrow.uturn.forward",
+                        tooltipKey: "重做 (Cmd+Shift+Z)",
+                        action: onRedo,
+                        isEnabled: hasRedo,
+                        iconSize: 13,
+                        foregroundColor: hasRedo ? .white : .primary.opacity(0.7),
+                        backgroundColor: hasRedo ? Color.blue.opacity(0.85) : Color.gray.opacity(0.1)
+                    )
                 }
             }
             .padding(.horizontal, 16)
             .padding(.top, 10)
-            
+
             // 第二层：属性调节面板
             VStack(spacing: 0) {
                 Divider().padding(.vertical, 6)
-                
+
                 HStack(spacing: 16) {
                     // 颜色色板
                     HStack(spacing: 6) {
@@ -1528,37 +2045,37 @@ struct UnifiedToolbarView: View {
                                 .frame(width: 18, height: 18)
                                 .overlay(
                                     Circle()
-                                        .stroke(Color.white, lineWidth: selectedColor == color ? 2 : 0)
+                                        .stroke(selectedColor == color ? Color.blue : Color.secondary.opacity(0.3), lineWidth: selectedColor == color ? 2.0 : 1.0)
                                 )
-                                .shadow(radius: selectedColor == color ? 2 : 0)
+                                .shadow(color: Color.black.opacity(selectedColor == color ? 0.3 : 0.1), radius: selectedColor == color ? 3 : 1)
                                 .onTapGesture {
                                     selectedColor = color
                                 }
                         }
                     }
-                    
-                    // 尺寸调节滑块
+
+                    // 尺寸调节滑块 (Custom)
                     HStack(spacing: 8) {
                         Image(systemName: "slider.horizontal.3")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
 
                         if showTextStylePicker || selectedTool == .counter {
-                            Slider(value: $selectedFontSize, in: 12...128, step: 1)
+                            TMThicknessSlider(value: $selectedFontSize, range: 12...128, step: 1)
                                 .frame(width: 100)
                             Text("\(Int(selectedFontSize))")
                                 .font(.system(size: 11, design: .monospaced))
                                 .foregroundColor(.secondary)
                                 .frame(width: 24, alignment: .trailing)
                         } else if selectedTool == .highlighter || selectedTool == .blur || selectedTool == .mosaic {
-                            Slider(value: $selectedBrushSize, in: 4...100, step: 1)
+                            TMThicknessSlider(value: $selectedBrushSize, range: 4...100, step: 1)
                                 .frame(width: 100)
                             Text("\(Int(selectedBrushSize))")
                                 .font(.system(size: 11, design: .monospaced))
                                 .foregroundColor(.secondary)
                                 .frame(width: 24, alignment: .trailing)
                         } else {
-                            Slider(value: $selectedLineWidth, in: 1...30, step: 1)
+                            TMThicknessSlider(value: $selectedLineWidth, range: 1...30, step: 1)
                                 .frame(width: 100)
                             Text("\(Int(selectedLineWidth))")
                                 .font(.system(size: 11, design: .monospaced))
@@ -1566,7 +2083,7 @@ struct UnifiedToolbarView: View {
                                 .frame(width: 24, alignment: .trailing)
                         }
                     }
-                    
+
                     // 文字样式
                     Picker("", selection: $selectedTextStyle) {
                         ForEach(TextStyle.allCases, id: \.self) { style in
@@ -1577,89 +2094,62 @@ struct UnifiedToolbarView: View {
                     .frame(width: 90)
                     .opacity(showTextStylePicker ? 1 : 0)
                     .allowsHitTesting(showTextStylePicker)
-                    
+
                     Spacer()
-                    
-                    // 5. 进阶操作组
+
+                    // 5. 进阶操作组 (Pin, Translate, OCR, Delete) 以及导出菜单
                     HStack(spacing: 8) {
-                        // Undo
-                        Button(action: onUndo) {
-                            Image(systemName: "arrow.uturn.backward")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(hasUndo ? .white : .gray)
-                                .frame(width: 28, height: 28)
-                                .background(hasUndo ? Color.blue.opacity(0.85) : Color.gray.opacity(0.1))
-                                .cornerRadius(6)
-                        }
-                        .disabled(!hasUndo)
-                        .buttonStyle(PlainButtonStyle())
-                        .help("撤销 (Cmd+Z)")
-                        
-                        // Redo
-                        Button(action: onRedo) {
-                            Image(systemName: "arrow.uturn.forward")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(hasRedo ? .white : .gray)
-                                .frame(width: 28, height: 28)
-                                .background(hasRedo ? Color.blue.opacity(0.85) : Color.gray.opacity(0.1))
-                                .cornerRadius(6)
-                        }
-                        .disabled(!hasRedo)
-                        .buttonStyle(PlainButtonStyle())
-                        .help("重做 (Cmd+Shift+Z)")
-                        
-                        // Pin
-                        Button(action: onPin) {
-                            Image(systemName: "pin.fill")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.white)
-                                .frame(width: 28, height: 28)
-                                .background(Color.orange.opacity(0.85))
-                                .cornerRadius(6)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .help("置顶贴图 (Pin)")
-                        
-                        // Translate (Only available on macOS 14.4+)
-                        if #available(macOS 14.4, *) {
-                            Button(action: onTranslate) {
-                                Image(systemName: "translate")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(.white)
-                                    .frame(width: 28, height: 28)
-                                    .background(Color.purple.opacity(0.85))
-                                    .cornerRadius(6)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .help("翻译选区 (Translate)")
-                        }
-                        
-                        // OCR
-                        Button(action: onOCR) {
-                            Image(systemName: "text.viewfinder")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.white)
-                                .frame(width: 28, height: 28)
-                                .background(Color.indigo.opacity(0.85))
-                                .cornerRadius(6)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .help("提取文字 (OCR)")
-                        
+
+                        // Extra tools - 蓝色图标默认态，hover 反转为白图标+蓝背景，明确可交互
+                        IconButtonWithTooltip(
+                            icon: "text.viewfinder",
+                            tooltipKey: "提取文字",
+                            action: onOCR
+                        )
+
+                        IconButtonWithTooltip(
+                            icon: "translate",
+                            tooltipKey: "翻译文字",
+                            action: onTranslate
+                        )
+
+                        IconButtonWithTooltip(
+                            icon: "pin",
+                            tooltipKey: "钉住到屏幕",
+                            action: onPin
+                        )
+
                         // Delete
-                        if hasSelection {
-                            Button(action: onDelete) {
-                                Image(systemName: "trash.fill")
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundColor(.white)
-                                    .frame(width: 28, height: 28)
-                                    .background(Color.red.opacity(0.85))
-                                    .cornerRadius(6)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .help("删除选中标注 (Delete)")
+                        if hasSelection && !isEditingText && !isTextSelected {
+                            IconButtonWithTooltip(
+                                icon: "trash.fill",
+                                tooltipKey: "删除选中标注 (Delete)",
+                                action: onDelete,
+                                iconSize: 12,
+                                foregroundColor: .white,
+                                backgroundColor: Color.red.opacity(0.85)
+                            )
                             .transition(.scale.combined(with: .opacity))
                         }
+
+                        Text("|").foregroundColor(.gray.opacity(0.4)).padding(.horizontal, 2)
+
+                        // Cancel
+                        CircleButtonWithTooltip(
+                            icon: "xmark",
+                            tooltipKey: "取消 (Esc)",
+                            action: onCancel,
+                            backgroundColor: Color.red.opacity(0.8)
+                        )
+
+                        // Confirm
+                        CircleButtonWithTooltip(
+                            icon: "checkmark",
+                            tooltipKey: "完成并保存",
+                            action: onConfirm,
+                            backgroundColor: Color.green
+                        )
+
                     }
                 }
                 .padding(.horizontal, 16)
@@ -1667,7 +2157,7 @@ struct UnifiedToolbarView: View {
             }
         }
         .onChange(of: selectedTool) { newTool in
-            if newTool == .numberedText {
+            if newTool == .numberedText || newTool == .rectText {
                 selectedTextStyle = .roundedBoxed
             }
         }
@@ -1688,20 +2178,6 @@ struct GroupButton: View {
         selected == tool
     }
     
-    var isCustomSVG: Bool {
-        tool == .pencil || tool == .highlighter || tool == .mosaic || tool == .spotlight
-    }
-    
-    var customSVGPath: String {
-        switch tool {
-        case .pencil: return SVGPaths.pencil
-        case .highlighter: return SVGPaths.highlighter
-        case .mosaic: return SVGPaths.mosaic
-        case .spotlight: return SVGPaths.spotlight
-        default: return ""
-        }
-    }
-    
     var iconName: String {
         switch tool {
         case .rectangle: return "rectangle"
@@ -1709,15 +2185,16 @@ struct GroupButton: View {
         case .ellipse: return "circle"
         case .line: return "line.diagonal"
         case .arrow: return "arrow.up.right"
-        case .text: return "t.square"
-        case .numberedText: return "list.number"
-        case .counter: return "1.circle"
-        case .pencil: return "paintbrush.pointed"
-        case .highlighter: return "marker.fill"
-        case .blur: return "drop"
-        case .mosaic: return "square.grid.3x3.topleft.filled"
-        case .spotlight: return "theatermasks"
-        default: return ""
+        case .text: return "a.square"
+        case .numberedText: return "text.badge.plus"
+        case .counter: return "1.circle.fill"
+        case .rectText: return "bubble.and.pencil"
+        case .pencil: return "pencil.tip"
+        case .highlighter: return "highlighter"
+        case .blur: return "drop.fill"
+        case .mosaic: return "checkerboard.rectangle"
+        case .spotlight: return "viewfinder.circle.fill"
+        case .aiMarker: return "location.fill.viewfinder"
         }
     }
     
@@ -1730,33 +2207,48 @@ struct GroupButton: View {
         case .arrow: return "箭头"
         case .text: return "文字"
         case .numberedText: return "序号文字"
+        case .rectText: return "矩形框文本"
         case .counter: return "计数器"
         case .pencil: return "画笔"
         case .highlighter: return "荧光笔"
         case .blur: return "模糊"
         case .mosaic: return "马赛克"
         case .spotlight: return "聚焦"
+        case .aiMarker: return "给 AI 定位"
         }
+    }
+    
+    private var aiThemed: Bool {
+        tool == .aiMarker
+    }
+    
+    private var btnForeground: Color {
+        if isSelected { return .white }
+        if aiThemed { return isHovered ? .white : TMDesign.Colors.purple.opacity(0.85) }
+        return isHovered ? .primary : .secondary
+    }
+
+    private var btnBackground: Color {
+        if isSelected {
+            return aiThemed ? TMDesign.Colors.purple.opacity(0.7) : TMDesign.Colors.blue
+        }
+        if aiThemed { return isHovered ? TMDesign.Colors.purple.opacity(0.7) : TMDesign.Colors.purple.opacity(0.1) }
+        return isHovered ? Color.gray.opacity(0.15) : Color.clear
     }
     
     var body: some View {
         Button(action: {
             selected = tool
         }) {
-            Group {
-                if isCustomSVG {
-                    SVGIconView(pathData: customSVGPath, color: isSelected ? Color.white : Color.primary)
-                        .frame(width: 14, height: 14)
-                } else {
-                    Image(systemName: iconName)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(isSelected ? .white : .primary)
-                }
-            }
-            .frame(width: 32, height: 32)
-            .background(isSelected ? Color.blue : Color.clear)
-            .cornerRadius(6)
-            .contentShape(Rectangle())
+            Image(systemName: iconName)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(btnForeground)
+                .frame(width: 32, height: 32)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(btnBackground)
+                )
+                .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
         .onHover { hover in
@@ -1785,5 +2277,280 @@ struct GroupButton: View {
         )
         // 保留原有的 help 作为无障碍和后备支持
         .help(LanguageManager.shared.localizedString(forKey: toolName))
+    }
+}
+
+/// 带自定义 hover tooltip 的图标按钮（解决 LSUIElement 应用系统 .help() tooltip 不显示的问题）
+/// 默认态使用蓝色图标 + 极浅背景，hover 态反转为白图标 + 蓝色背景，明确传达可交互性
+struct IconButtonWithTooltip: View {
+    let icon: String
+    let tooltipKey: String
+    let action: () -> Void
+    var isEnabled: Bool = true
+    var iconSize: CGFloat = 15
+    var buttonSize: CGFloat = 32
+    
+    // 允许外部覆盖颜色（如 Delete 按钮需要红色）
+    var foregroundColor: Color? = nil
+    var backgroundColor: Color? = nil
+    var hoverForegroundColor: Color? = nil
+    var hoverBackgroundColor: Color? = nil
+    
+    // 颜色配置：默认态 vs Hover 态
+    private var defaultFg: Color { foregroundColor ?? TMDesign.Colors.blue }
+    private var defaultBg: Color { backgroundColor ?? TMDesign.Colors.blue.opacity(0.1) }
+    private var hoverFg: Color { hoverForegroundColor ?? .white }
+    private var hoverBg: Color { hoverBackgroundColor ?? TMDesign.Colors.blue.opacity(0.85) }
+    
+    @State private var isHovered = false
+    
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: iconSize, weight: .medium))
+                .foregroundColor(isEnabled ? (isHovered ? hoverFg : defaultFg) : Color.gray.opacity(0.5))
+                .frame(width: buttonSize, height: buttonSize)
+                .background(isEnabled ? (isHovered ? hoverBg : defaultBg) : Color.gray.opacity(0.1))
+                .cornerRadius(6)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .disabled(!isEnabled)
+        .onHover { hover in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hover
+            }
+        }
+        .overlay(
+            Group {
+                if isHovered {
+                    Text(LanguageManager.shared.localizedString(forKey: tooltipKey))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.black.opacity(0.75))
+                        .cornerRadius(4)
+                        .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
+                        .fixedSize()
+                        .offset(y: -28)
+                        .allowsHitTesting(false)
+                }
+            }
+        )
+    }
+}
+
+struct CircleButtonWithTooltip: View {
+    let icon: String
+    let tooltipKey: String
+    let action: () -> Void
+    var foregroundColor: Color = .white
+    var backgroundColor: Color = Color.red.opacity(0.8)
+    var iconSize: CGFloat = 12
+    var buttonSize: CGFloat = 32
+    
+    @State private var isHovered = false
+    
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: iconSize, weight: .semibold))
+                .foregroundColor(foregroundColor)
+                .padding(6)
+                .background(backgroundColor)
+                .clipShape(Circle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .onHover { hover in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hover
+            }
+        }
+        .overlay(
+            Group {
+                if isHovered {
+                    Text(LanguageManager.shared.localizedString(forKey: tooltipKey))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.black.opacity(0.75))
+                        .cornerRadius(4)
+                        .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
+                        .fixedSize()
+                        .offset(y: -28)
+                        .allowsHitTesting(false)
+                }
+            }
+        )
+    }
+}
+
+/// 第三栏 AI 操作按钮（带文本标签 + 自定义 tooltip）
+struct AIActionButtonWithTooltip: View {
+    let icon: String
+    let tooltipKey: String
+    let action: () -> Void
+    var backgroundColor: Color = Color.blue.opacity(0.8)
+    
+    @State private var isHovered = false
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .medium))
+                Text(LanguageManager.shared.localizedString(forKey: tooltipKey))
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .background(backgroundColor)
+            .cornerRadius(6)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .onHover { hover in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hover
+            }
+        }
+        .overlay(
+            Group {
+                if isHovered {
+                    Text(LanguageManager.shared.localizedString(forKey: tooltipKey))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.black.opacity(0.75))
+                        .cornerRadius(4)
+                        .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
+                        .fixedSize()
+                        .offset(y: -28)
+                        .allowsHitTesting(false)
+                }
+            }
+        )
+    }
+}
+
+/// 导出下拉菜单按钮（AI 语义：替代第三栏，合并复制原图/复制坐标）
+/// 点击后按钮进入选中态，上方弹出常驻气泡给出两个选项
+struct ExportDropdownButton: View {
+    let onExportImage: (() -> Void)?
+    let onExportCoords: (() -> Void)?
+    var canExportCoords: Bool = false
+    var aiMarkerCount: Int = 0
+
+    @State private var isShowingPopover = false
+
+    var body: some View {
+        Button(action: {
+            isShowingPopover.toggle()
+        }) {
+            ZStack {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(.white)
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 5, weight: .bold))
+                    .foregroundColor(.white.opacity(0.85))
+                    .offset(x: 9, y: 9)
+
+                // 计数角标：使用与 AI marker 一致的紫色
+                if aiMarkerCount > 0 {
+                    Text("\(aiMarkerCount)")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(minWidth: 14, minHeight: 14)
+                        .background(TMDesign.Colors.purple.opacity(0.9))
+                        .clipShape(Circle())
+                        .offset(x: 12, y: -12)
+                }
+            }
+            .frame(width: 32, height: 32)
+            .background(TMDesign.Colors.purple.opacity(isShowingPopover ? 0.85 : 0.7))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .popover(isPresented: $isShowingPopover, arrowEdge: .top) {
+            VStack(alignment: .leading, spacing: 0) {
+                Button(action: {
+                    onExportImage?()
+                    isShowingPopover = false
+                }) {
+                    Label(LanguageManager.shared.localizedString(forKey: "复制原图"), systemImage: "photo.on.rectangle")
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                Divider()
+                    .padding(.horizontal, 4)
+
+                Button(action: {
+                    if canExportCoords {
+                        onExportCoords?()
+                        isShowingPopover = false
+                    } else {
+                        ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: "请先添加 AI 定位标记"))
+                    }
+                }) {
+                    Label(LanguageManager.shared.localizedString(forKey: "复制坐标"), systemImage: "doc.on.doc")
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+            .padding(.vertical, 4)
+        }
+    }
+}
+
+struct TMThicknessSlider: View {
+    @Binding var value: CGFloat
+    var range: ClosedRange<CGFloat>
+    var step: CGFloat = 1
+    
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let safeW = max(1, w - 14) // reserve space for thumb
+            let ratio = (value - range.lowerBound) / (range.upperBound - range.lowerBound)
+            let thumbX = 7 + CGFloat(ratio) * safeW
+            
+            ZStack(alignment: .leading) {
+                // Track
+                Capsule()
+                    .fill(Color.secondary.opacity(0.3))
+                    .frame(height: 4)
+                
+                // Active Track
+                Capsule()
+                    .fill(Color.blue)
+                    .frame(width: max(0, thumbX), height: 4)
+                
+                // Thumb
+                Circle()
+                    .fill(Color.white)
+                    .shadow(color: .black.opacity(0.2), radius: 2, x: 0, y: 1)
+                    .frame(width: 14, height: 14)
+                    .position(x: thumbX, y: geo.size.height / 2)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { drag in
+                        let percent = (drag.location.x - 7) / safeW
+                        let newValue = range.lowerBound + percent * (range.upperBound - range.lowerBound)
+                        let stepped = round(newValue / step) * step
+                        value = max(range.lowerBound, min(range.upperBound, stepped))
+                    }
+            )
+        }
+        .frame(height: 24)
     }
 }

@@ -35,12 +35,14 @@ public enum AnnotationToolType: String, CaseIterable, Codable {
     case arrow = "箭头"
     case text = "文字"
     case numberedText = "序号文字"
+    case rectText = "矩形框文本"
     case counter = "计数器"
     case pencil = "画笔"
     case highlighter = "荧光笔"
     case blur = "模糊"
     case mosaic = "马赛克"
     case spotlight = "聚焦"
+    case aiMarker = "给 AI 定位"
     
     public var isFreehandTool: Bool {
         return self == .pencil || self == .highlighter || self == .blur || self == .mosaic
@@ -57,6 +59,7 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
     public var endPoint: CGPoint
     public var points: [CGPoint]? // 自由画笔点集
     public var calloutOffset: CGSize? // 针对 Numbered Text 的独立避让控制偏移量
+    public var customWidth: CGFloat? // 针对文本框的手动定宽
     
     // 样式数据
     public var color: Color
@@ -69,6 +72,17 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
     
     // 计数器数据
     public var counterValue: Int?
+    public var customCounterString: String?
+    
+    // 获取实际展示的序列号字符串
+    public var displayCounterString: String {
+        if let custom = customCounterString {
+            return custom
+        } else if let count = counterValue {
+            return String(count)
+        }
+        return "1"
+    }
     
     public init(
         id: UUID = UUID(),
@@ -76,13 +90,15 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
         startPoint: CGPoint,
         endPoint: CGPoint = .zero,
         points: [CGPoint]? = nil,
-        color: Color = .red,
+        color: Color = TMDesign.Colors.red,
         lineWidth: CGFloat = 3.0,
         text: String = "",
         fontStyle: TextStyle? = nil,
-        fontSize: CGFloat? = nil,
+        fontSize: CGFloat = 16.0,
         counterValue: Int? = nil,
-        calloutOffset: CGSize? = nil
+        customCounterString: String? = nil,
+        calloutOffset: CGSize? = nil,
+        customWidth: CGFloat? = nil
     ) {
         self.id = id
         self.type = type
@@ -95,7 +111,9 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
         self.fontStyle = fontStyle
         self.fontSize = fontSize
         self.counterValue = counterValue
+        self.customCounterString = customCounterString
         self.calloutOffset = calloutOffset
+        self.customWidth = customWidth
     }
     
     public var isFreehandTool: Bool {
@@ -105,7 +123,7 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
     /// 标准化的 CGRect，处理反向拖拽
     public var rect: CGRect {
         if type == .counter {
-            let size = (fontSize ?? 24.0) * 1.5
+            let size = (fontSize ?? 16.0) * 1.5
             return CGRect(
                 x: endPoint.x - size / 2,
                 y: endPoint.y - size / 2,
@@ -115,8 +133,8 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
         }
         if type == .numberedText {
             // Numbered text box bounds based on callout offset
-            let origin = CGPoint(x: startPoint.x + (calloutOffset?.width ?? 15.0),
-                                 y: startPoint.y + (calloutOffset?.height ?? -60.0))
+            let origin = CGPoint(x: startPoint.x + (calloutOffset?.width ?? 16.0),
+                                 y: startPoint.y + (calloutOffset?.height ?? -45.0))
             return CGRect(
                 x: min(origin.x, endPoint.x),
                 y: min(origin.y, endPoint.y),
@@ -134,6 +152,18 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
             )
         }
         
+        if type == .rectText {
+            // 复用 numberedText 模型：rect 返回文本框，矩形框由 points[0]/points[1] 描述
+            let origin = CGPoint(x: startPoint.x + (calloutOffset?.width ?? 16.0),
+                                 y: startPoint.y + (calloutOffset?.height ?? 0.0))
+            return CGRect(
+                x: min(origin.x, endPoint.x),
+                y: min(origin.y, endPoint.y),
+                width: abs(origin.x - endPoint.x),
+                height: abs(origin.y - endPoint.y)
+            )
+        }
+
         if let points = points, !points.isEmpty {
             let minX = points.map(\.x).min()!
             let maxX = points.map(\.x).max()!
@@ -172,11 +202,19 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
         }
         
         if type == .numberedText {
-            // ONLY resize the endPoint/text box bounds. The circle remains at startPoint!
-            let origin = CGPoint(x: startPoint.x + (calloutOffset?.width ?? 70), y: startPoint.y + (calloutOffset?.height ?? -70))
+            let origin = CGPoint(x: startPoint.x + (calloutOffset?.width ?? 16.0), y: startPoint.y + (calloutOffset?.height ?? -45.0))
             let mappedOrigin = mapPoint(origin)
-            endPoint = mapPoint(endPoint)
             calloutOffset = CGSize(width: mappedOrigin.x - startPoint.x, height: mappedOrigin.y - startPoint.y)
+            customWidth = newRect.width
+        } else if type == .text {
+            startPoint = CGPoint(x: newRect.minX, y: newRect.minY)
+            customWidth = newRect.width
+        } else if type == .rectText {
+            // 复用 numberedText 模型：resize 只调整文本框，矩形框位置/大小保持不变
+            let origin = CGPoint(x: startPoint.x + (calloutOffset?.width ?? 16.0), y: startPoint.y + (calloutOffset?.height ?? 0.0))
+            let mappedOrigin = mapPoint(origin)
+            calloutOffset = CGSize(width: mappedOrigin.x - startPoint.x, height: mappedOrigin.y - startPoint.y)
+            customWidth = newRect.width
         } else {
             startPoint = mapPoint(startPoint)
             endPoint = mapPoint(endPoint)
@@ -189,9 +227,9 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
     // MARK: - Codable Custom Mapping
     
     enum CodingKeys: String, CodingKey {
-        case id, type, startPoint, endPoint, points, color, lineWidth, text, fontStyle, fontSize, counterValue
+        case id, type, startPoint, endPoint, points, color, lineWidth, text, fontStyle, fontSize, counterValue, calloutOffset
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
@@ -199,18 +237,19 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
         try container.encode(startPoint, forKey: .startPoint)
         try container.encode(endPoint, forKey: .endPoint)
         try container.encode(points, forKey: .points)
-        
+        try container.encode(calloutOffset, forKey: .calloutOffset)
+
         // sRGB Color bridge
         let codableColor = color.toCodable()
         try container.encode(codableColor, forKey: .color)
-        
+
         try container.encode(lineWidth, forKey: .lineWidth)
         try container.encode(text, forKey: .text)
         try container.encode(fontStyle, forKey: .fontStyle)
         try container.encode(fontSize, forKey: .fontSize)
         try container.encode(counterValue, forKey: .counterValue)
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(UUID.self, forKey: .id)
@@ -218,10 +257,11 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
         self.startPoint = try container.decode(CGPoint.self, forKey: .startPoint)
         self.endPoint = try container.decode(CGPoint.self, forKey: .endPoint)
         self.points = try container.decodeIfPresent([CGPoint].self, forKey: .points)
-        
+        self.calloutOffset = try container.decodeIfPresent(CGSize.self, forKey: .calloutOffset)
+
         let codableColor = try container.decode(CodableColor.self, forKey: .color)
         self.color = codableColor.color
-        
+
         self.lineWidth = try container.decode(CGFloat.self, forKey: .lineWidth)
         self.text = try container.decodeIfPresent(String.self, forKey: .text)
         self.fontStyle = try container.decodeIfPresent(TextStyle.self, forKey: .fontStyle)
