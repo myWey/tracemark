@@ -537,53 +537,6 @@ struct HistoryItemView: View {
         return formatter.string(fromByteCount: bytes)
     }
     
-    private func copyOriginalImage() {
-        let originalURL = HistoryManager.shared.fileURL(for: record.fileName.replacingOccurrences(of: ".png", with: "_original.png"))
-        let url = FileManager.default.fileExists(atPath: originalURL.path) ? originalURL : HistoryManager.shared.fileURL(for: record.fileName)
-        
-        guard let fullImage = NSImage(contentsOf: url) else { return }
-        
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        
-        let pbItem = NSPasteboardItem()
-        if let tiffData = fullImage.tiffRepresentation {
-            pbItem.setData(tiffData, forType: .tiff)
-        }
-        
-        pasteboard.writeObjects([pbItem])
-        
-        DispatchQueue.main.async {
-            ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: "已复制原图"))
-        }
-    }
-    
-    private func copyCoordinates() {
-        guard let annotations = record.annotations else { return }
-        let aiMarkers = annotations.filter { $0.type == .aiMarker }
-        guard !aiMarkers.isEmpty else { return }
-        
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        
-        var textOutput = LanguageManager.shared.localizedString(forKey: "以下是在原图上圈出的目标元素坐标 [xmin, ymin, xmax, ymax]：") + "\n\n"
-        for marker in aiMarkers.sorted(by: { ($0.counterValue ?? 0) < ($1.counterValue ?? 0) }) {
-            let idStr = marker.displayCounterString
-            let rect = marker.rect
-            let absStr = "[\(Int(rect.minX)), \(Int(rect.minY)), \(Int(rect.maxX)), \(Int(rect.maxY))]"
-            textOutput += "\(idStr). \(absStr)\n"
-        }
-        
-        let pbItem = NSPasteboardItem()
-        pbItem.setString(textOutput, forType: .string)
-        
-        pasteboard.writeObjects([pbItem])
-        
-        DispatchQueue.main.async {
-            ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: "已复制坐标"))
-        }
-    }
-    
     private func copyToClipboard() {
         let url = HistoryManager.shared.fileURL(for: record.fileName)
         guard let fullImage = NSImage(contentsOf: url) else { return }

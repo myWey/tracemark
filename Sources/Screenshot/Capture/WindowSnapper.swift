@@ -42,10 +42,6 @@ public class WindowSnapper {
                 continue
             }
             
-            // 过滤掉菜单栏和 Dock（可选，如果要允许选中菜单栏和 Dock，可以不滤）
-            // let windowName = info[kCGWindowName as String] as? String
-            // let ownerName = info[kCGWindowOwnerName as String] as? String
-            
             // 获取窗口 Bounds (在 CG 坐标系中，原点在主屏左上角)
             guard let boundsDict = info[kCGWindowBounds as String] as? [String: CGFloat],
                   let x = boundsDict["X"],

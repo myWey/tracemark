@@ -817,7 +817,6 @@ public struct AnnotationRootView: View {
                     let minY = min(p0.y, p1.y)
                     let maxY = max(p0.y, p1.y)
                     let rectWidth = maxX - minX
-                    _ = maxY - minY
                     annotations[idx].points = [CGPoint(x: minX, y: minY), CGPoint(x: maxX, y: maxY)]
                     annotations[idx].startPoint = CGPoint(x: minX, y: minY)
                     let offset = CGSize(width: rectWidth + 16, height: 0)
@@ -1414,13 +1413,6 @@ extension View {
             self
         }
     }
-}
-
-/// 计算矩形外框上距离目标点最近的点（已废弃，保留兼容）
-private func nearestPoint(on rect: CGRect, to point: CGPoint) -> CGPoint {
-    let clampedX = max(rect.minX, min(point.x, rect.maxX))
-    let clampedY = max(rect.minY, min(point.y, rect.maxY))
-    return CGPoint(x: clampedX, y: clampedY)
 }
 
 /// 计算从矩形中心出发、穿过 `point` 的射线与矩形边框的交点。

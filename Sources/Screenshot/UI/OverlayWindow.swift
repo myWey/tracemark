@@ -302,10 +302,6 @@ class TrackingNSView: NSView {
         onHover?(point)
     }
     
-    override func mouseEntered(with event: NSEvent) {
-        // Handled by resetCursorRects
-    }
-    
     override func mouseExited(with event: NSEvent) {
         onHoverExited?()
     }
@@ -673,27 +669,6 @@ struct OverlayRootView: View {
             width: abs(start.x - current.x),
             height: abs(start.y - current.y)
         )
-    }
-    
-    func findHitAnnotation(at point: CGPoint) -> (UUID, DragHandle?)? {
-        // 检查是否点中了 NumberedText 的起始点圆圈
-        for item in annotations.reversed() {
-            if item.type == .numberedText {
-                let size = (item.fontSize ?? 16.0) * 1.5
-                let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
-                if circleRect.contains(point) {
-                    return (item.id, .calloutOrigin)
-                }
-            }
-        }
-        
-        // 再检查是否点中了某个标注的包围盒
-        for item in annotations.reversed() {
-            if item.rect.contains(point) {
-                return (item.id, nil)
-            }
-        }
-        return nil
     }
     
     var body: some View {
@@ -1472,7 +1447,6 @@ struct OverlayRootView: View {
                         let minY = min(p0.y, p1.y)
                         let maxY = max(p0.y, p1.y)
                         let rectWidth = maxX - minX
-                        _ = maxY - minY
                         annotations[idx].points = [CGPoint(x: minX, y: minY), CGPoint(x: maxX, y: maxY)]
                         annotations[idx].startPoint = CGPoint(x: minX, y: minY)
                         let offset = CGSize(width: rectWidth + 16, height: 0)

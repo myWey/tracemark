@@ -49,8 +49,6 @@ public class AnnotationManager {
         let scaleFactor = screen.backingScaleFactor
         
         // 计算图片在屏幕上的最佳展示尺寸（留出一定边距）
-        _ = screenFrame.width * 0.8
-        _ = screenFrame.height * 0.8
         let imageWidth = CGFloat(image.width) / scaleFactor
         let imageHeight = CGFloat(image.height) / scaleFactor
         

@@ -215,9 +215,6 @@ public class OCRTextOverlayNSView: NSView {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-
-        // 复制成功反馈
-        NotificationCenter.default.post(name: NSNotification.Name("OCRTextCopied"), object: text)
     }
 
     // MARK: - Mouse Events

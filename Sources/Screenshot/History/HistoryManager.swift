@@ -106,11 +106,6 @@ public class HistoryManager {
         return historyDirURL.appendingPathComponent(fileName)
     }
     
-    /// 获取可用于显示的缩略图（这里简单返回 NSImage）
-    public func image(for fileName: String) -> NSImage? {
-        return NSImage(contentsOf: fileURL(for: fileName))
-    }
-    
     /// 获取优化的缩略图并缓存，防止 LazyVGrid 滚动掉帧
     public func thumbnail(for fileName: String, maxSize: CGFloat = 320) -> NSImage? {
         let cacheKey = "\(fileName)_\(maxSize)" as NSString
