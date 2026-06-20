@@ -62,7 +62,7 @@ public class HotkeyManager {
         )
         
         if status != noErr {
-            print("❌ [HotkeyManager] 挂载事件处理器失败: \(status)")
+            AppLogger.hotkey.error("❌ [HotkeyManager] 挂载事件处理器失败: \(status)")
         } else {
             isEventHandlerInstalled = true
         }
@@ -87,11 +87,11 @@ public class HotkeyManager {
         )
         
         if regStatus != noErr {
-            print("❌ [HotkeyManager] 注册全局快捷键失败, 错误码: \(regStatus)")
+            AppLogger.hotkey.error("❌ [HotkeyManager] 注册全局快捷键失败, 错误码: \(regStatus)")
             return false
         } else {
             self.hotKeyRef = hotKey
-            print("✅ [HotkeyManager] 成功注册全局快捷键")
+            AppLogger.hotkey.info("✅ [HotkeyManager] 成功注册全局快捷键")
             return true
         }
     }
@@ -109,7 +109,7 @@ public class HotkeyManager {
     }
     
     private func handleHotkeyTriggered() {
-        print("🔔 [HotkeyManager] 全局快捷键被触发")
+        AppLogger.hotkey.debug("🔔 [HotkeyManager] 全局快捷键被触发")
         DispatchQueue.main.async {
             self.callback?()
         }

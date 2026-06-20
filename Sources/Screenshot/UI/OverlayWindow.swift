@@ -370,7 +370,7 @@ public class OverlayManager {
     private init() {
         NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
             if !(self?.windows.isEmpty ?? true) {
-                print("ℹ️ [OverlayManager] 应用失去焦点，自动取消截图")
+                AppLogger.ui.debug("ℹ️ [OverlayManager] 应用失去焦点，自动取消截图")
                 self?.closeAll()
             }
         }
@@ -379,7 +379,7 @@ public class OverlayManager {
                 if self.windows.contains(win) {
                     DispatchQueue.main.async {
                         if !self.windows.contains(where: { $0.isKeyWindow }) {
-                            print("ℹ️ [OverlayManager] 遮罩窗口失去焦点，自动取消截图")
+                            AppLogger.ui.debug("ℹ️ [OverlayManager] 遮罩窗口失去焦点，自动取消截图")
                             self.closeAll()
                         }
                     }
@@ -390,7 +390,7 @@ public class OverlayManager {
             if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
                app.bundleIdentifier != Bundle.main.bundleIdentifier {
                 if !(self?.windows.isEmpty ?? true) {
-                    print("ℹ️ [OverlayManager] 其他应用被激活 (\(app.localizedName ?? "")), 自动取消截图")
+                    AppLogger.ui.debug("ℹ️ [OverlayManager] 其他应用被激活 (\(app.localizedName ?? "")), 自动取消截图")
                     self?.closeAll()
                 }
             }
@@ -402,13 +402,13 @@ public class OverlayManager {
     private var escGlobalMonitor: Any?
     private var onCanceledCallback: (() -> Void)?
     public func showOverlay(captures: [ScreenCapture], onCaptured: @escaping (CGImage, CGImage?, [AnnotationItem]?, NSScreen, PostCaptureAction) -> Void, canceled: @escaping () -> Void) {
-        print("ℹ️ [OverlayManager] 开始唤起 \(captures.count) 个遮罩窗口...")
+        AppLogger.ui.debug("ℹ️ [OverlayManager] 开始唤起 \(captures.count) 个遮罩窗口...")
         closeAll() // 防御性清理
         
         // 注册全局 ESC 键监听
         escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.keyCode == 53 { // ESC 键
-                print("ℹ️ [OverlayManager] 监听到全局 ESC 键，取消截图")
+                AppLogger.ui.debug("ℹ️ [OverlayManager] 监听到全局 ESC 键，取消截图")
                 DispatchQueue.main.async {
                     canceled()
                     self?.closeAll()
@@ -421,7 +421,7 @@ public class OverlayManager {
         // 针对焦点丢失情况，补充 Global Monitor (仅在其他应用激活时生效)
         escGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.keyCode == 53 { // ESC 键
-                print("ℹ️ [OverlayManager] (Global) 监听到 ESC 键，取消截图")
+                AppLogger.ui.debug("ℹ️ [OverlayManager] (Global) 监听到 ESC 键，取消截图")
                 DispatchQueue.main.async {
                     canceled()
                     self?.closeAll()
@@ -433,7 +433,7 @@ public class OverlayManager {
             let screen = capture.screen
             let screenFrame = screen.frame
             
-            print("ℹ️ [OverlayManager] 屏幕信息 - frame: \(screenFrame), visibleFrame: \(screen.visibleFrame), backingScaleFactor: \(screen.backingScaleFactor)")
+            AppLogger.ui.debug("ℹ️ [OverlayManager] 屏幕信息 - frame: \(String(describing: screenFrame)), visibleFrame: \(String(describing: screen.visibleFrame)), backingScaleFactor: \(screen.backingScaleFactor)")
             
             let loc = NSEvent.mouseLocation
             let x = loc.x - screenFrame.minX
@@ -441,11 +441,11 @@ public class OverlayManager {
             let initialHover = CGPoint(x: x, y: y)
             
             let rootView = OverlayRootView(capture: capture, initialHoverPoint: initialHover, onCaptured: { image, cleanImage, annotations, action in
-                print("ℹ️ [OverlayManager] 遮罩层触发 onCaptured，开始执行回调...")
+                AppLogger.ui.debug("ℹ️ [OverlayManager] 遮罩层触发 onCaptured，开始执行回调...")
                 onCaptured(image, cleanImage, annotations, screen, action)
                 self.closeAll()
             }, onCanceled: {
-                print("ℹ️ [OverlayManager] 遮罩层触发 onCanceled...")
+                AppLogger.ui.debug("ℹ️ [OverlayManager] 遮罩层触发 onCanceled...")
                 canceled()
                 self.closeAll()
             })
@@ -483,25 +483,25 @@ public class OverlayManager {
             window.setContentSize(screenFrame.size)
             window.setFrame(screenFrame, display: true)
             
-            print("ℹ️ [OverlayManager] 窗口属性 - frame: \(window.frame), contentView.bounds: \(window.contentView?.bounds ?? .zero), hostingView.frame: \(hostingView.frame)")
+            AppLogger.ui.debug("ℹ️ [OverlayManager] 窗口属性 - frame: \(String(describing: window.frame)), contentView.bounds: \(String(describing: window.contentView?.bounds ?? .zero)), hostingView.frame: \(String(describing: hostingView.frame))")
             
             // 激活应用并显示窗口（不调用 NSApp.activate 以避免非必要的主屏幕切换）
             window.makeKeyAndOrderFront(nil)
             window.orderFrontRegardless()
             
             // 验证窗口状态
-            print("ℹ️ [OverlayManager] 窗口状态 - isVisible: \(window.isVisible), isKeyWindow: \(window.isKeyWindow), isMainWindow: \(window.isMainWindow), level: \(window.level.rawValue), windowNumber: \(window.windowNumber)")
-            print("ℹ️ [OverlayManager] contentView - frame: \(window.contentView?.frame ?? .zero), isHidden: \(window.contentView?.isHidden ?? true)")
+            AppLogger.ui.debug("ℹ️ [OverlayManager] 窗口状态 - isVisible: \(window.isVisible), isKeyWindow: \(window.isKeyWindow), isMainWindow: \(window.isMainWindow), level: \(window.level.rawValue), windowNumber: \(window.windowNumber)")
+            AppLogger.ui.debug("ℹ️ [OverlayManager] contentView - frame: \(String(describing: window.contentView?.frame ?? .zero)), isHidden: \(window.contentView?.isHidden ?? true)")
             
             windows.append(window)
         }
         
-        print("ℹ️ [OverlayManager] 窗口创建完毕，当前持有窗口数: \(windows.count)")
+        AppLogger.ui.debug("ℹ️ [OverlayManager] 窗口创建完毕，当前持有窗口数: \(self.windows.count)")
     }
     
     /// 关闭所有遮罩窗口
     public func closeAll() {
-        print("ℹ️ [OverlayManager] 执行 closeAll，当前窗口数: \(self.windows.count)")
+        AppLogger.ui.debug("ℹ️ [OverlayManager] 执行 closeAll，当前窗口数: \(self.windows.count)")
         
         if !self.windows.isEmpty {
             self.onCanceledCallback?()
@@ -522,7 +522,7 @@ public class OverlayManager {
             window.close()
         }
         self.windows.removeAll()
-        print("✅ [OverlayManager] 遮罩窗口已全部销毁")
+        AppLogger.ui.info("✅ [OverlayManager] 遮罩窗口已全部销毁")
     }
 }
 
@@ -1713,7 +1713,7 @@ struct OverlayRootView: View {
 
         guard let rendered = renderer.cgImage,
               var finalCropped = ensurePremultipliedAlpha(for: rendered) else {
-            print("❌ [OverlayView] 标注合并渲染失败")
+            AppLogger.ui.error("❌ [OverlayView] 标注合并渲染失败")
             onCanceled()
             return
         }
@@ -1806,7 +1806,7 @@ struct OverlayRootView: View {
             toastKey = "已保存并复制 AI 定位坐标"
         }
         ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: toastKey))
-        print("📋 [OverlayView] AI 导出完成: image=\(copyImage), coords=\(copyCoords)")
+        AppLogger.ui.debug("📋 [OverlayView] AI 导出完成: image=\(copyImage), coords=\(copyCoords)")
         
         // 复制后保存并切换为图像编辑窗口
         exportAndClose(action: .copyToAI)

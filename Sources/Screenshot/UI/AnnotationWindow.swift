@@ -19,11 +19,11 @@ public class AnnotationManager {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            print("🔔 [AnnotationManager] 收到 OpenAnnotationCanvas 通知，准备拉起标注画布...")
+            AppLogger.ui.debug("🔔 [AnnotationManager] 收到 OpenAnnotationCanvas 通知，准备拉起标注画布...")
             if let userInfo = notification.userInfo {
                 guard let cfValue = userInfo["image"] as? CFTypeRef,
                       CFGetTypeID(cfValue) == CGImage.typeID else {
-                    print("❌ [AnnotationManager] 通知 userInfo 中未携带 CGImage 对象！")
+                    AppLogger.ui.error("❌ [AnnotationManager] 通知 userInfo 中未携带 CGImage 对象！")
                     return
                 }
                 let image = cfValue as! CGImage  // CFGetTypeID 已校验，安全
@@ -38,13 +38,13 @@ public class AnnotationManager {
             } else if let obj = notification.object {
                 guard let cfValue = obj as? CFTypeRef,
                       CFGetTypeID(cfValue) == CGImage.typeID else {
-                    print("❌ [AnnotationManager] 通知 object 未携带 CGImage 对象！")
+                    AppLogger.ui.error("❌ [AnnotationManager] 通知 object 未携带 CGImage 对象！")
                     return
                 }
                 let image = cfValue as! CGImage  // CFGetTypeID 已校验，安全
                 self?.showAnnotationCanvas(for: image)
             } else {
-                print("❌ [AnnotationManager] 通知中未携带 CGImage 对象！")
+                AppLogger.ui.error("❌ [AnnotationManager] 通知中未携带 CGImage 对象！")
             }
         }
     }

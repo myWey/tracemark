@@ -200,7 +200,7 @@ struct ThumbnailRootView: View {
             let nsImage = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
             pasteboard.writeObjects([nsImage])
         }
-        print("📋 [ThumbnailView] 已复制到系统剪贴板")
+        AppLogger.ui.debug("📋 [ThumbnailView] 已复制到系统剪贴板")
     }
     
     /// 动作方法：主动转存到 ~/Downloads 目录
@@ -214,9 +214,9 @@ struct ThumbnailRootView: View {
                 try fileManager.removeItem(at: destURL)
             }
             try fileManager.copyItem(at: imageURL, to: destURL)
-            print("💾 [ThumbnailView] 成功复制截图到下载目录: \(destURL.path)")
+            AppLogger.ui.info("💾 [ThumbnailView] 成功复制截图到下载目录: \(destURL.path)")
         } catch {
-            print("❌ [ThumbnailView] 保存到下载目录失败: \(error)")
+            AppLogger.ui.error("❌ [ThumbnailView] 保存到下载目录失败: \(String(describing: error))")
         }
     }
 }

@@ -43,9 +43,9 @@ public class HistoryManager {
         if !fileManager.fileExists(atPath: historyDirURL.path) {
             do {
                 try fileManager.createDirectory(at: historyDirURL, withIntermediateDirectories: true, attributes: nil)
-                print("✅ [HistoryManager] 创建历史记录目录: \(historyDirURL.path)")
+                AppLogger.history.info("✅ [HistoryManager] 创建历史记录目录: \(self.historyDirURL.path)")
             } catch {
-                print("❌ [HistoryManager] 创建历史记录目录失败: \(error)")
+                AppLogger.history.error("❌ [HistoryManager] 创建历史记录目录失败: \(String(describing: error))")
             }
         }
     }
@@ -58,7 +58,7 @@ public class HistoryManager {
             let decoder = JSONDecoder()
             self.records = try decoder.decode([ScreenshotRecord].self, from: data)
         } catch {
-            print("⚠️ [HistoryManager] 无法读取元数据: \(error)")
+            AppLogger.history.warning("⚠️ [HistoryManager] 无法读取元数据: \(String(describing: error))")
         }
     }
     
@@ -69,7 +69,7 @@ public class HistoryManager {
             let data = try encoder.encode(self.records)
             try data.write(to: metadataURL, options: .atomic)
         } catch {
-            print("❌ [HistoryManager] 无法保存元数据: \(error)")
+            AppLogger.history.error("❌ [HistoryManager] 无法保存元数据: \(String(describing: error))")
         }
     }
     
@@ -153,14 +153,14 @@ public class HistoryManager {
         let fileURL = historyDirURL.appendingPathComponent(record.fileName)
         
         guard let destination = CGImageDestinationCreateWithURL(fileURL as CFURL, UTType.png.identifier as CFString, 1, nil) else {
-            print("❌ [HistoryManager] 无法创建图片写入目的地进行更新")
+            AppLogger.history.error("❌ [HistoryManager] 无法创建图片写入目的地进行更新")
             return
         }
         
         CGImageDestinationAddImage(destination, finalImage, nil)
         
         if CGImageDestinationFinalize(destination) {
-            print("💾 [HistoryManager] 历史截图已覆盖更新: \(fileURL.path)")
+            AppLogger.history.debug("💾 [HistoryManager] 历史截图已覆盖更新: \(fileURL.path)")
             
             var newSize = record.fileSize
             if let attr = try? fileManager.attributesOfItem(atPath: fileURL.path),
@@ -175,7 +175,7 @@ public class HistoryManager {
             
             NotificationCenter.default.post(name: .HistoryDidUpdate, object: nil)
         } else {
-            print("❌ [HistoryManager] 保存更新图片失败")
+            AppLogger.history.error("❌ [HistoryManager] 保存更新图片失败")
         }
     }
     
@@ -191,7 +191,7 @@ public class HistoryManager {
                 try fileManager.removeItem(at: originalURL)
             }
         } catch {
-            print("❌ [HistoryManager] 删除文件失败: \(error)")
+            AppLogger.history.error("❌ [HistoryManager] 删除文件失败: \(String(describing: error))")
         }
     }
 }

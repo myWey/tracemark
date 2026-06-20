@@ -6,7 +6,7 @@ import Cocoa
 let runningApps = NSWorkspace.shared.runningApplications
 for runningApp in runningApps {
     if runningApp.localizedName == "TraceMark" && runningApp != NSRunningApplication.current {
-        print("⚠️ [main] 发现旧版 TraceMark 进程 (PID: \(runningApp.processIdentifier))，正在终止...")
+        AppLogger.app.warning("⚠️ [main] 发现旧版 TraceMark 进程 (PID: \(runningApp.processIdentifier))，正在终止...")
         runningApp.forceTerminate()
     }
 }

@@ -189,12 +189,12 @@ public class PinManager {
         }
 
         pinWindows.append(panel)
-        print("📌 [PinManager] 新增置顶贴图，当前总计: \(pinWindows.count)")
+        AppLogger.ui.debug("📌 [PinManager] 新增置顶贴图，当前总计: \(self.pinWindows.count)")
     }
 
     public func removeWindow(_ window: PinWindow) {
         pinWindows.removeAll { $0 === window }
-        print("📌 [PinManager] 贴图已销毁，当前总计: \(pinWindows.count)")
+        AppLogger.ui.debug("📌 [PinManager] 贴图已销毁，当前总计: \(self.pinWindows.count)")
     }
 
     public func closeAll() {
@@ -202,7 +202,7 @@ public class PinManager {
             win.close()
         }
         pinWindows.removeAll()
-        print("📌 [PinManager] 已清空所有贴图")
+        AppLogger.ui.debug("📌 [PinManager] 已清空所有贴图")
     }
 }
 

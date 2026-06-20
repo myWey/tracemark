@@ -578,7 +578,7 @@ struct HistoryItemView: View {
         
         guard let nsImage = NSImage(contentsOf: urlToLoad),
               let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-            print("❌ [HistoryItem] 无法加载再编辑底图")
+            AppLogger.history.error("❌ [HistoryItem] 无法加载再编辑底图")
             return
         }
         

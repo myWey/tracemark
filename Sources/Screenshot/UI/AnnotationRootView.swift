@@ -501,7 +501,7 @@ public struct AnnotationRootView: View {
                     let response = try await session.translate(ocrResultText)
                     translatedText = response.targetText
                 } catch {
-                    print("❌ [Translation] 翻译失败: \(error)")
+                    AppLogger.ui.error("❌ [Translation] 翻译失败: \(String(describing: error))")
                     translatedText = "翻译失败：\(error.localizedDescription)"
                 }
                 isTranslating = false
@@ -973,7 +973,7 @@ public struct AnnotationRootView: View {
             }
             
             pasteboard.writeObjects(itemsToWrite)
-            print("📋 [Annotation] AI \(copyCoords ? "坐标" : "原图")已复制")
+            AppLogger.ui.debug("📋 [Annotation] AI \(copyCoords ? "坐标" : "原图")已复制")
             
             if let rId = recordId {
                 HistoryManager.shared.updateRecord(id: rId, annotations: annotations, finalImage: fullImageForHistory)
@@ -1018,7 +1018,7 @@ public struct AnnotationRootView: View {
                 pasteboard.writeObjects([nsImage])
             }
 
-            print("📋 [Annotation] 普通标注图已复制")
+            AppLogger.ui.debug("📋 [Annotation] 普通标注图已复制")
             
             withAnimation(.spring()) {
                 toastMessage = LanguageManager.shared.localizedString(forKey: "已复制到剪贴板")
@@ -1046,8 +1046,8 @@ public struct AnnotationRootView: View {
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.writeObjects([nsImage])
-            
-            print("✅ [Annotation] 标注成功导出并保存！")
+
+            AppLogger.ui.info("✅ [Annotation] 标注成功导出并保存！")
 
             withAnimation(.spring()) {
                 toastMessage = LanguageManager.shared.localizedString(forKey: "Saved_And_Copied")
@@ -1081,7 +1081,7 @@ public struct AnnotationRootView: View {
                 pasteboard.writeObjects([nsImage])
             }
 
-            print("✅ [Annotation] 标注成功导出并保存！")
+            AppLogger.ui.info("✅ [Annotation] 标注成功导出并保存！")
 
             withAnimation(.spring()) {
                 toastMessage = LanguageManager.shared.localizedString(forKey: "Saved_And_Copied")
@@ -1092,7 +1092,7 @@ public struct AnnotationRootView: View {
                 onClose()
             }
         } else {
-            print("❌ [Annotation] ImageRenderer 渲染失败")
+            AppLogger.ui.error("❌ [Annotation] ImageRenderer 渲染失败")
             onClose()
         }
     }
@@ -1190,7 +1190,7 @@ public struct AnnotationRootView: View {
             let result = blocks?.map(\.text).joined(separator: "\n") ?? ""
 
             if result.isEmpty {
-                print("⚠️ [OCR] 未识别到文字或发生错误: \(String(describing: error))")
+                AppLogger.ui.error("⚠️ [OCR] 未识别到文字或发生错误: \(String(describing: error))")
                 self.ocrResultText = "未识别到文字"
             } else {
                 self.ocrResultText = result
@@ -1210,7 +1210,7 @@ public struct AnnotationRootView: View {
 
     private func performTranslation() {
         guard !ocrResultText.isEmpty, ocrResultText != "未识别到文字" else {
-            print("⚠️ [Translation] 没有可翻译的文本")
+            AppLogger.ui.warning("⚠️ [Translation] 没有可翻译的文本")
             return
         }
 

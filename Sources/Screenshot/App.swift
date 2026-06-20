@@ -36,7 +36,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         NotificationCenter.default.addObserver(self, selector: #selector(updateMenu), name: NSNotification.Name("LanguageDidChange"), object: nil)
         
-        print("🚀 [AppDelegate] TraceMark 启动成功，驻留后台菜单栏...")
+        AppLogger.app.info("🚀 [AppDelegate] TraceMark 启动成功，驻留后台菜单栏...")
     }
     
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -232,7 +232,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// 触发整个截图核心工作流
     private func triggerCapture() {
         if isCapturing {
-            print("⚠️ [AppDelegate] 正在收集中，取消旧任务并重新开始")
+            AppLogger.app.warning("⚠️ [AppDelegate] 正在收集中，取消旧任务并重新开始")
             OverlayManager.shared.closeAll()
             isCapturing = false
             
@@ -244,13 +244,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         isCapturing = true
         
-        print("📸 [AppDelegate] 触发截图捕获...")
+        AppLogger.app.debug("📸 [AppDelegate] 触发截图捕获...")
         
         // 1. 抓取所有屏幕 (必须在 activate 之前执行，否则台前调度模式下会清屏)
         let captures = CaptureEngine.shared.captureAllScreens()
-        print("ℹ️ [AppDelegate] 捕获到 \(captures.count) 个屏幕快照")
+        AppLogger.app.debug("ℹ️ [AppDelegate] 捕获到 \(captures.count) 个屏幕快照")
         if captures.isEmpty {
-            print("❌ [AppDelegate] 未能捕获任何屏幕画面，截屏流程终止")
+            AppLogger.app.error("❌ [AppDelegate] 未能捕获任何屏幕画面，截屏流程终止")
             isCapturing = false
             return
         }
@@ -258,14 +258,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 抓取完成后，不需要强行激活应用，只将遮罩提升到最前即可避免主屏幕空间切换 (P3)
         
         // 2. 唤起全屏半透明选区遮罩
-        print("ℹ️ [AppDelegate] 准备唤起 OverlayManager 遮罩层...")
+        AppLogger.app.debug("ℹ️ [AppDelegate] 准备唤起 OverlayManager 遮罩层...")
         OverlayManager.shared.showOverlay(captures: captures) { [weak self] croppedImage, cleanImage, annotations, screen, action in
             self?.isCapturing = false
-            print("✅ [AppDelegate] 收到截图裁剪结果回调")
+            AppLogger.app.info("✅ [AppDelegate] 收到截图裁剪结果回调")
             self?.handleCapturedImage(croppedImage, cleanImage: cleanImage, annotations: annotations, screen: screen, action: action)
         } canceled: { [weak self] in
             self?.isCapturing = false
-            print("ℹ️ [AppDelegate] 收到截图取消回调")
+            AppLogger.app.debug("ℹ️ [AppDelegate] 收到截图取消回调")
         }
     }
     
@@ -278,7 +278,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DispatchQueue.main.async {
                 ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: "已保存并复制原图和AI 定位坐标"))
             }
-            print("✅ [AppDelegate] AI 原图与坐标已由来源视图处理并复制")
+            AppLogger.app.info("✅ [AppDelegate] AI 原图与坐标已由来源视图处理并复制")
             
             let recordId = HistoryManager.shared.records.first?.id
             DispatchQueue.main.async {
@@ -301,7 +301,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             pasteboard.writeObjects([nsImage])
         }
         
-        print("✅ [AppDelegate] 最终截图已保存并复制到剪贴板！")
+        AppLogger.app.info("✅ [AppDelegate] 最终截图已保存并复制到剪贴板！")
         
         if action == .none {
             DispatchQueue.main.async {
