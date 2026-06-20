@@ -77,3 +77,14 @@
 "OCR_Copied" = "Copied";
 "OCR_Copy_Full_Info_Tooltip" = "Copy full text with coordinates";
 "Saved_And_Copied" = "Saved and copied original image";
+"翻译结果" = "Translation";
+"译文" = "Translation";
+"暂无译文" = "No translation yet";
+"翻译中..." = "Translating...";
+"重新翻译" = "Retranslate";
+"收起" = "Collapse";
+"已复制" = "Copied";
+"复制" = "Copy";
+"进入标注与涂抹" = "Annotate & Edit";
+"复制到剪贴板" = "Copy to Clipboard";
+"保存到下载" = "Save to Downloads";

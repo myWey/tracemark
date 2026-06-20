@@ -15,6 +15,8 @@ struct MagnifierView: View {
     @State private var rgbString: String = ""
     @State private var croppedImage: CGImage? = nil
     @State private var keyMonitor: Any? = nil
+
+    @ObservedObject private var languageManager = LanguageManager.shared
     
     var body: some View {
         VStack(spacing: 6) {
@@ -106,8 +108,8 @@ struct MagnifierView: View {
         .onAppear {
             updateMagnifier()
             keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                // keyCode 8 is 'C' or 'c', require Command modifier
-                if event.keyCode == 8 && event.modifierFlags.contains(.command) {
+                // Cmd+C: use charactersIgnoringModifiers for keyboard layout compatibility
+                if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers?.lowercased() == "c" {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(hexString, forType: .string)
                     NSSound(named: "Glass")?.play()

@@ -101,6 +101,7 @@ public class ThumbnailWindowController {
 
 /// 悬浮缩略图卡片 SwiftUI 视图
 struct ThumbnailRootView: View {
+    @ObservedObject private var languageManager = LanguageManager.shared
     let imageURL: URL
     let image: CGImage
     let onClose: () -> Void
@@ -132,19 +133,19 @@ struct ThumbnailRootView: View {
                     
                     HStack(spacing: 16) {
                         // 标注编辑按钮
-                        ActionButton(icon: "paintbrush.fill", tooltip: "进入标注与涂抹") {
+                        ActionButton(icon: "paintbrush.fill", tooltip: languageManager.localizedString(forKey: "进入标注与涂抹")) {
                             NotificationCenter.default.post(name: NSNotification.Name("OpenAnnotationCanvas"), object: nil, userInfo: ["image": image])
                             onClose()
                         }
                         
                         // 复制按钮
-                        ActionButton(icon: "doc.on.doc.fill", tooltip: "复制到剪贴板") {
+                        ActionButton(icon: "doc.on.doc.fill", tooltip: languageManager.localizedString(forKey: "复制到剪贴板")) {
                             copyToClipboard()
                             onClose()
                         }
                         
                         // 保存按钮
-                        ActionButton(icon: "square.and.arrow.down.fill", tooltip: "保存到下载") {
+                        ActionButton(icon: "square.and.arrow.down.fill", tooltip: languageManager.localizedString(forKey: "保存到下载")) {
                             saveToDownloads()
                             onClose()
                         }

@@ -18,6 +18,8 @@ public struct OCRResultPanel: View {
     /// 通知监听 token，用于 onDisappear 清理
     @State private var selectionObserver: NSObjectProtocol?
 
+    @ObservedObject private var languageManager = LanguageManager.shared
+
     public init(
         text: Binding<String>,
         textBlocks: [RecognizedTextBlock] = [],

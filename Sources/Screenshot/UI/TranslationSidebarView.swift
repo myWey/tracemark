@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 
 public struct TranslationSidebarView: View {
+    @ObservedObject private var languageManager = LanguageManager.shared
     let sourceText: String
     @Binding var translatedText: String
     var isLoading: Bool
@@ -20,7 +21,7 @@ public struct TranslationSidebarView: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("翻译结果")
+                Text(languageManager.localizedString(forKey: "翻译结果"))
                     .font(.headline)
                     .foregroundColor(.primary)
                 Spacer()
@@ -39,7 +40,7 @@ public struct TranslationSidebarView: View {
             // Translated text section
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("译文")
+                    Text(languageManager.localizedString(forKey: "译文"))
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.secondary)
                     Spacer()
@@ -49,7 +50,7 @@ public struct TranslationSidebarView: View {
                 ZStack(alignment: .center) {
                     ScrollView {
                         if translatedText.isEmpty {
-                            Text("暂无译文")
+                            Text(languageManager.localizedString(forKey: "暂无译文"))
                                 .font(.system(size: 14))
                                 .foregroundColor(.secondary)
                                 .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
@@ -65,7 +66,7 @@ public struct TranslationSidebarView: View {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle())
                                 .scaleEffect(0.8)
-                            Text("翻译中...")
+                            Text(languageManager.localizedString(forKey: "翻译中..."))
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundColor(.primary)
                         }
@@ -92,7 +93,7 @@ public struct TranslationSidebarView: View {
                 Button(action: onRetranslate) {
                     HStack(spacing: 4) {
                         Image(systemName: sfSymbol("translate", fallback: "globe"))
-                        Text("重新翻译")
+                        Text(languageManager.localizedString(forKey: "重新翻译"))
                     }
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.white)
@@ -109,7 +110,7 @@ public struct TranslationSidebarView: View {
                 Button(action: onClose) {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.right")
-                        Text("收起")
+                        Text(languageManager.localizedString(forKey: "收起"))
                     }
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.primary)
@@ -168,6 +169,7 @@ private struct SelectableTextView: NSViewRepresentable {
 }
 
 private struct CopyButton: View {
+    @ObservedObject private var languageManager = LanguageManager.shared
     let text: String
     @State private var showCopiedFeedback: Bool = false
 
@@ -189,7 +191,7 @@ private struct CopyButton: View {
             HStack(spacing: 4) {
                 Image(systemName: showCopiedFeedback ? "checkmark" : "doc.on.doc")
                     .font(.system(size: 11, weight: .medium))
-                Text(showCopiedFeedback ? "已复制" : "复制")
+                Text(showCopiedFeedback ? languageManager.localizedString(forKey: "已复制") : languageManager.localizedString(forKey: "复制"))
                     .font(.system(size: 11, weight: .medium))
             }
             .foregroundColor(.primary)

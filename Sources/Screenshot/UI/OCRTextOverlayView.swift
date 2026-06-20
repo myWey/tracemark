@@ -269,7 +269,7 @@ public class OCRTextOverlayNSView: NSView {
     }
 
     public override func keyDown(with event: NSEvent) {
-        if event.modifierFlags.contains(.command) && event.keyCode == 8 { // Cmd+C
+        if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers?.lowercased() == "c" { // Cmd+C
             copySelectedText()
         } else {
             super.keyDown(with: event)
