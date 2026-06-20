@@ -13,14 +13,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 激活策略已在 main.swift 中设置为 .accessory
         
         // 0. 仅在首次启动时主动弹窗请求系统权限（避免后续重启时因为拒绝过而反复弹窗）
-        if !UserDefaults.standard.bool(forKey: "HasPromptedPermissionsOnLaunch") {
+        if !UserDefaults.standard.bool(forKey: UserDefaultsKey.hasPromptedPermissionsOnLaunch) {
             if #available(macOS 11.0, *) {
                 CGRequestScreenCaptureAccess()
             }
             let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
             AXIsProcessTrustedWithOptions(options as CFDictionary)
             
-            UserDefaults.standard.set(true, forKey: "HasPromptedPermissionsOnLaunch")
+            UserDefaults.standard.set(true, forKey: UserDefaultsKey.hasPromptedPermissionsOnLaunch)
         }
         
         // 初始化标注管理器以注册通知监听
@@ -34,7 +34,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.triggerCapture()
         }
         
-        NotificationCenter.default.addObserver(self, selector: #selector(updateMenu), name: NSNotification.Name("LanguageDidChange"), object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateMenu), name: .languageDidChange, object: nil)
         
         AppLogger.app.info("🚀 [AppDelegate] TraceMark 启动成功，驻留后台菜单栏...")
     }
@@ -81,7 +81,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let emptyAnnotations: [AnnotationItem] = []
                 userInfo["annotationsData"] = try? JSONEncoder().encode(emptyAnnotations)
                 NotificationCenter.default.post(
-                    name: NSNotification.Name("OpenAnnotationCanvas"),
+                    name: .openAnnotationCanvas,
                     object: nil,
                     userInfo: userInfo
                 )
@@ -317,7 +317,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                NotificationCenter.default.post(name: NSNotification.Name("TriggerPostCaptureAction"), object: action)
+                NotificationCenter.default.post(name: .triggerPostCaptureAction, object: action)
             }
         }
     }

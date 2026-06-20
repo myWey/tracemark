@@ -15,7 +15,7 @@ public class AnnotationManager {
     private init() {
         // 监听进入标注的通知
         NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("OpenAnnotationCanvas"),
+            forName: .openAnnotationCanvas,
             object: nil,
             queue: .main
         ) { [weak self] notification in

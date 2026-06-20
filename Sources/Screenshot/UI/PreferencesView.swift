@@ -173,7 +173,7 @@ struct ShortcutRecorder: NSViewRepresentable {
                 let keyString = keyString(for: keyCode)
                 let finalString = "\(modifierString)\(keyString)"
                 parent.currentShortcut = finalString
-                UserDefaults.standard.set(finalString, forKey: "captureShortcut")
+                UserDefaults.standard.set(finalString, forKey: UserDefaultsKey.captureShortcut)
                 parent.isRecording = false
             } else {
                 parent.isRecording = false

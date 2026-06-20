@@ -452,7 +452,7 @@ public struct AnnotationRootView: View {
             }
         }
         .background(Color(NSColor.windowBackgroundColor))
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TriggerPostCaptureAction"))) { notification in
+        .onReceive(NotificationCenter.default.publisher(for: .triggerPostCaptureAction)) { notification in
             if let action = notification.object as? PostCaptureAction {
                 if action == .ocr {
                     performOCR(isForTranslation: false)
@@ -461,7 +461,7 @@ public struct AnnotationRootView: View {
                 }
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("CounterDoubleTapped"))) { notification in
+        .onReceive(NotificationCenter.default.publisher(for: .counterDoubleTapped)) { notification in
             if let id = notification.object as? UUID {
                 editingCounterId = id
             }
@@ -539,7 +539,7 @@ public struct AnnotationRootView: View {
     
     private func isPointInNumberedCircle(_ point: CGPoint, item: AnnotationItem) -> Bool {
         guard item.type == .numberedText else { return false }
-        let size = (item.fontSize ?? 16.0) * 1.5
+        let size = (item.fontSize ?? 16.0) * NumberedCircleConfig.renderSizeMultiplier
         let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
         return circleRect.contains(point)
     }
@@ -550,7 +550,7 @@ public struct AnnotationRootView: View {
            let index = annotations.firstIndex(where: { $0.id == selectedId }) {
             let item = annotations[index]
             if item.type == .numberedText {
-                let size = (item.fontSize ?? 16.0) * 1.5
+                let size = (item.fontSize ?? 16.0) * NumberedCircleConfig.renderSizeMultiplier
                 let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
                 if circleRect.contains(point) {
                     return (selectedId, .calloutOrigin)
@@ -589,7 +589,7 @@ public struct AnnotationRootView: View {
         // 检查未选中的 NumberedText 的起始点圆圈
         for item in annotations.reversed() {
             if item.type == .numberedText {
-                let size = (item.fontSize ?? 16.0) * 1.5
+                let size = (item.fontSize ?? 16.0) * NumberedCircleConfig.renderSizeMultiplier
                 let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
                 if circleRect.contains(point) {
                     return (item.id, .calloutOrigin)
@@ -641,7 +641,7 @@ public struct AnnotationRootView: View {
             
             // 双击进入编辑态：支持文本框、带序号文本、矩形框文本，以及双击序号圆圈。
             // 条件放宽：系统 clickCount 不可靠或用户双击稍慢时，用 lastClickAnnotationId + 0.5s 兜底。
-            if clickCount >= 2 || (lastClickAnnotationId == id && clickInterval < 0.5) {
+            if clickCount >= 2 || (lastClickAnnotationId == id && clickInterval < InteractionConfig.annotationDoubleClickFallbackInterval) {
                 let item = annotations.first(where: { $0.id == id })
                 // 优先判断：如果命中带序号文本的序号圆圈，进入序号编辑（即使 hitTest 返回文本框）
                 if let item = item, item.type == .numberedText, isPointInNumberedCircle(point, item: item) {
@@ -1719,7 +1719,7 @@ struct AnnotationShapeView: View {
                 let fontStyle = item.fontStyle ?? .standard
                 
                 let rightEdge = clipRect?.maxX ?? displaySize?.width ?? 800
-                let numberOffset = (item.type == .numberedText) ? (fontSize * 1.5 + 8) : 0
+                let numberOffset = (item.type == .numberedText) ? (fontSize * NumberedCircleConfig.renderSizeMultiplier + 8) : 0
                 // 获取计算宽度：rectText 的文本框起点是 startPoint + calloutOffset
                 let textOriginX = item.type == .rectText
                     ? item.startPoint.x + (item.calloutOffset?.width ?? 0)
@@ -1839,7 +1839,7 @@ struct AnnotationShapeView: View {
                         // 序号点 (使用标准 SwiftUI 形状)
                         let isEditingCounterState = isEditingCounter && item.type == .numberedText
                         ZStack {
-                            Circle().fill(item.color).frame(width: fontSize * 1.5, height: fontSize * 1.5)
+                            Circle().fill(item.color).frame(width: fontSize * NumberedCircleConfig.renderSizeMultiplier, height: fontSize * NumberedCircleConfig.renderSizeMultiplier)
                             if isEditingCounterState {
                                 AnyView(AutoSizingTextView(
                                 text: Binding(
@@ -1848,25 +1848,25 @@ struct AnnotationShapeView: View {
                                 ),
                                 fontSize: fontSize * 0.8,
                                 textColor: item.color == .white ? .black : .white,
-                                customWidth: fontSize * 1.5,
+                                customWidth: fontSize * NumberedCircleConfig.renderSizeMultiplier,
                                 maxWidth: fontSize * 2.0,
                                 isEditable: true,
                                 placeholder: nil,
                                 commitOnReturn: true,
                                 onCommit: { onTextCommit?() }
                             )
-                            .frame(width: fontSize * 1.5, height: fontSize * 1.5))
+                            .frame(width: fontSize * NumberedCircleConfig.renderSizeMultiplier, height: fontSize * NumberedCircleConfig.renderSizeMultiplier))
                             } else {
                                 AnyView(Text(countStr)
                                     .font(.system(size: fontSize * 0.8, weight: .bold))
                                     .foregroundColor(item.color == .white ? .black : .white))
                             }
                         }
-                        .frame(width: fontSize * 1.5, height: fontSize * 1.5)
+                        .frame(width: fontSize * NumberedCircleConfig.renderSizeMultiplier, height: fontSize * NumberedCircleConfig.renderSizeMultiplier)
                         .position(x: item.startPoint.x, y: item.startPoint.y)
                         .contentShape(Circle())
                         .onTapGesture(count: 2) {
-                            NotificationCenter.default.post(name: NSNotification.Name("CounterDoubleTapped"), object: item.id)
+                            NotificationCenter.default.post(name: .counterDoubleTapped, object: item.id)
                         }
                     }
                     
@@ -1971,7 +1971,7 @@ struct AnnotationShapeView: View {
                     .simultaneousGesture(
                         TapGesture(count: 2).onEnded {
                             // 由于双击检测由外层托管比较难以命中，直接在视图层处理
-                            NotificationCenter.default.post(name: NSNotification.Name("AnnotationDoubleTapped"), object: item.id)
+                            NotificationCenter.default.post(name: .annotationDoubleTapped, object: item.id)
                         }
                     )
                     }
@@ -2022,7 +2022,7 @@ struct AnnotationShapeView: View {
                     Canvas { context, sz in
                         context.fill(Path(ellipseIn: CGRect(origin: .zero, size: sz)), with: .color(item.color))
                     }
-                    .frame(width: size * 1.5, height: size * 1.5)
+                    .frame(width: size * NumberedCircleConfig.renderSizeMultiplier, height: size * NumberedCircleConfig.renderSizeMultiplier)
                     
                     if isEditingCounterState {
                         AnyView(AutoSizingTextView(
@@ -2032,25 +2032,25 @@ struct AnnotationShapeView: View {
                             ),
                             fontSize: size * 0.8,
                             textColor: item.color == .white ? .black : .white,
-                            customWidth: size * 1.5,
+                            customWidth: size * NumberedCircleConfig.renderSizeMultiplier,
                             maxWidth: size * 2.0,
                             isEditable: true,
                             placeholder: nil,
                             commitOnReturn: true,
                             onCommit: { onTextCommit?() }
                         )
-                        .frame(width: size * 1.5, height: size * 1.5))
+                        .frame(width: size * NumberedCircleConfig.renderSizeMultiplier, height: size * NumberedCircleConfig.renderSizeMultiplier))
                     } else {
                         AnyView(Text(item.displayCounterString)
                             .font(.system(size: size * 0.8, weight: .bold))
                             .foregroundColor(item.color == .white ? .black : .white))
                     }
                 }
-                .frame(width: size * 1.5, height: size * 1.5)
+                .frame(width: size * NumberedCircleConfig.renderSizeMultiplier, height: size * NumberedCircleConfig.renderSizeMultiplier)
                 .position(x: item.endPoint.x, y: item.endPoint.y)
                 .contentShape(Circle())
                 .onTapGesture(count: 2) {
-                    NotificationCenter.default.post(name: NSNotification.Name("CounterDoubleTapped"), object: item.id)
+                    NotificationCenter.default.post(name: .counterDoubleTapped, object: item.id)
                 }
         }
     }

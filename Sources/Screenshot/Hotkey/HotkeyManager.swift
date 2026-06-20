@@ -97,14 +97,14 @@ public class HotkeyManager {
     }
     
     private func saveToUserDefaults() {
-        UserDefaults.standard.set(Int(currentKeyCode), forKey: "Hotkey_KeyCode")
-        UserDefaults.standard.set(Int(currentModifiers), forKey: "Hotkey_Modifiers")
+        UserDefaults.standard.set(Int(currentKeyCode), forKey: UserDefaultsKey.hotkeyKeyCode)
+        UserDefaults.standard.set(Int(currentModifiers), forKey: UserDefaultsKey.hotkeyModifiers)
     }
     
     private func loadFromUserDefaults() {
-        if UserDefaults.standard.object(forKey: "Hotkey_KeyCode") != nil {
-            currentKeyCode = UInt16(UserDefaults.standard.integer(forKey: "Hotkey_KeyCode"))
-            currentModifiers = UInt32(UserDefaults.standard.integer(forKey: "Hotkey_Modifiers"))
+        if UserDefaults.standard.object(forKey: UserDefaultsKey.hotkeyKeyCode) != nil {
+            currentKeyCode = UInt16(UserDefaults.standard.integer(forKey: UserDefaultsKey.hotkeyKeyCode))
+            currentModifiers = UInt32(UserDefaults.standard.integer(forKey: UserDefaultsKey.hotkeyModifiers))
         }
     }
     

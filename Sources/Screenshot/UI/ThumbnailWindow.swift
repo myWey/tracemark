@@ -121,7 +121,7 @@ struct ThumbnailRootView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .contentShape(Rectangle()) // 确保整块区域可点击
                     .onTapGesture {
-                        NotificationCenter.default.post(name: NSNotification.Name("OpenAnnotationCanvas"), object: nil, userInfo: ["image": image])
+                        NotificationCenter.default.post(name: .openAnnotationCanvas, object: nil, userInfo: ["image": image])
                         onClose()
                     }
                 
@@ -134,7 +134,7 @@ struct ThumbnailRootView: View {
                     HStack(spacing: 16) {
                         // 标注编辑按钮
                         ActionButton(icon: "paintbrush.fill", tooltip: languageManager.localizedString(forKey: "进入标注与涂抹")) {
-                            NotificationCenter.default.post(name: NSNotification.Name("OpenAnnotationCanvas"), object: nil, userInfo: ["image": image])
+                            NotificationCenter.default.post(name: .openAnnotationCanvas, object: nil, userInfo: ["image": image])
                             onClose()
                         }
                         

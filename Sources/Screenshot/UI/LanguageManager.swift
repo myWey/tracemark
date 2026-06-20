@@ -40,7 +40,7 @@ public class LanguageManager: ObservableObject {
     
     private init() {
         // Initialize with saved preference
-        let saved = UserDefaults.standard.string(forKey: "AppLanguageSelection") ?? AppLanguage.system.rawValue
+        let saved = UserDefaults.standard.string(forKey: UserDefaultsKey.appLanguageSelection) ?? AppLanguage.system.rawValue
         let lang = AppLanguage(rawValue: saved) ?? .system
         
         if lang == .system {
@@ -59,7 +59,7 @@ public class LanguageManager: ObservableObject {
         } else {
             currentLocale = Locale(identifier: selectedLanguage.rawValue)
         }
-        NotificationCenter.default.post(name: NSNotification.Name("LanguageDidChange"), object: nil)
+        NotificationCenter.default.post(name: .languageDidChange, object: nil)
     }
     
     /// 定位 SwiftPM 资源 bundle，避免自动生成的 Bundle.module 在 .app 包中找不到时 fatalError。

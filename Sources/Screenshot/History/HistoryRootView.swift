@@ -114,7 +114,7 @@ public struct DashboardRootView: View {
                         if let nsImage = NSImage(contentsOf: url), let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) {
                             DispatchQueue.main.async {
                                 NotificationCenter.default.post(
-                                    name: NSNotification.Name("OpenAnnotationCanvas"),
+                                    name: .openAnnotationCanvas,
                                     object: nil,
                                     userInfo: ["image": cgImage]
                                 )
@@ -128,7 +128,7 @@ public struct DashboardRootView: View {
                     if let data = data, let nsImage = NSImage(data: data), let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) {
                         DispatchQueue.main.async {
                             NotificationCenter.default.post(
-                                name: NSNotification.Name("OpenAnnotationCanvas"),
+                                name: .openAnnotationCanvas,
                                 object: nil,
                                 userInfo: ["image": cgImage]
                             )
@@ -143,7 +143,7 @@ public struct DashboardRootView: View {
 }
 
 public struct HistoryContentView: View {
-    @ObservedObject var viewModel = HistoryViewModel()
+    @StateObject var viewModel = HistoryViewModel()
     @State private var showingClearAlert = false
     
     public init() {}
@@ -316,6 +316,10 @@ class HistoryViewModel: ObservableObject {
     init() {
         loadRecords()
         NotificationCenter.default.addObserver(self, selector: #selector(handleHistoryUpdate), name: .HistoryDidUpdate, object: nil)
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
     
     @objc private func handleHistoryUpdate() {

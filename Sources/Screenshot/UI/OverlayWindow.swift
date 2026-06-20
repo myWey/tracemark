@@ -276,7 +276,7 @@ class TrackingNSView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window != nil {
-            NotificationCenter.default.addObserver(forName: NSNotification.Name("SelectedToolChanged"), object: nil, queue: .main) { [weak self] notification in
+            NotificationCenter.default.addObserver(forName: .selectedToolChanged, object: nil, queue: .main) { [weak self] notification in
                 if let tool = notification.object as? AnnotationToolType {
                     self?.activeTool = tool
                     if let selfView = self {
@@ -339,10 +339,10 @@ class TrackingNSView: NSView {
         if event.clickCount >= 2, let mapPoint = mapPoint {
             let localPoint = mapPoint(point)
             for item in annotations.reversed() where item.type == .numberedText || item.type == .counter {
-                let size = (item.fontSize ?? 16.0) * 1.6
+                let size = (item.fontSize ?? 16.0) * NumberedCircleConfig.doubleTapHitMultiplier
                 let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
                 if circleRect.contains(localPoint) {
-                    NotificationCenter.default.post(name: NSNotification.Name("CounterDoubleTapped"), object: item.id)
+                    NotificationCenter.default.post(name: .counterDoubleTapped, object: item.id)
                     return
                 }
             }
@@ -935,13 +935,13 @@ struct OverlayRootView: View {
         .onChange(of: selectedAnnotationId) { newId in
             handleSelectionChange(to: newId)
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AnnotationDoubleTapped"))) { notification in
+        .onReceive(NotificationCenter.default.publisher(for: .annotationDoubleTapped)) { notification in
             if let id = notification.object as? UUID {
                 self.prepareForWrite()
                 self.editingTextId = id
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("CounterDoubleTapped"))) { notification in
+        .onReceive(NotificationCenter.default.publisher(for: .counterDoubleTapped)) { notification in
             if let id = notification.object as? UUID {
                 self.editingCounterId = id
             }
@@ -989,7 +989,7 @@ struct OverlayRootView: View {
            let index = annotations.firstIndex(where: { $0.id == selectedId }) {
             let item = annotations[index]
             if item.type == .numberedText {
-                let size = (item.fontSize ?? 16.0) * 1.5
+                let size = (item.fontSize ?? 16.0) * NumberedCircleConfig.renderSizeMultiplier
                 let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
                 if circleRect.contains(point) {
                     return (selectedId, .calloutOrigin)
@@ -1028,7 +1028,7 @@ struct OverlayRootView: View {
         // 检查未选中的 NumberedText 的起始点圆圈
         for item in annotations.reversed() {
             if item.type == .numberedText {
-                let size = (item.fontSize ?? 16.0) * 1.5
+                let size = (item.fontSize ?? 16.0) * NumberedCircleConfig.renderSizeMultiplier
                 let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
                 if circleRect.contains(point) {
                     return (item.id, .calloutOrigin)
@@ -1107,7 +1107,7 @@ struct OverlayRootView: View {
                 let clickInterval = now - lastClickTime
                 if handle == nil,
                    lastClickAnnotationId == id,
-                   clickInterval < 0.3,
+                   clickInterval < InteractionConfig.overlayDoubleClickInterval,
                    let index = annotations.firstIndex(where: { $0.id == id }) {
                     let type = annotations[index].type
                     if type == .text || type == .numberedText || type == .rectText {
@@ -1648,7 +1648,7 @@ struct OverlayRootView: View {
     }
     
     private func handleSelectedToolChanged(_ newTool: AnnotationToolType) {
-        NotificationCenter.default.post(name: NSNotification.Name("SelectedToolChanged"), object: newTool)
+        NotificationCenter.default.post(name: .selectedToolChanged, object: newTool)
         // 通过通知异步提交，避免 closure 直接捕获 OverlayRootView 实例方法导致闪崩
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: commitTextEditNotification, object: nil)

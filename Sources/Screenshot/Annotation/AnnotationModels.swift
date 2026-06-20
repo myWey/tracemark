@@ -49,6 +49,14 @@ public enum AnnotationToolType: String, CaseIterable, Codable {
     }
 }
 
+/// 序号圆圈相关常量
+enum NumberedCircleConfig {
+    /// 序号圆圈渲染大小倍数（相对于 fontSize）
+    static let renderSizeMultiplier: CGFloat = 1.5
+    /// 序号圆圈双击命中容差倍数（略大于渲染大小，提高双击命中率）
+    static let doubleTapHitMultiplier: CGFloat = 1.6
+}
+
 /// 独立的标注数据实体
 public struct AnnotationItem: Identifiable, Codable, Equatable {
     public let id: UUID
@@ -123,7 +131,7 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
     /// 标准化的 CGRect，处理反向拖拽
     public var rect: CGRect {
         if type == .counter {
-            let size = (fontSize ?? 16.0) * 1.5
+            let size = (fontSize ?? 16.0) * NumberedCircleConfig.renderSizeMultiplier
             return CGRect(
                 x: endPoint.x - size / 2,
                 y: endPoint.y - size / 2,
