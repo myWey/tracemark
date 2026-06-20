@@ -52,7 +52,11 @@ public class CaptureEngine {
                 let rect = screen.frame
                 // CGWindowListCreateImage 使用的是 CoreGraphics 的坐标系（原点在左上角），而 NSScreen.frame 是 AppKit 坐标系（原点在左下角）。
                 // 对于截取全屏画面，一般传入屏幕的 bounds
-                let cgRect = CGRect(x: rect.origin.x, y: NSScreen.screens.first!.frame.height - rect.origin.y - rect.height, width: rect.width, height: rect.height)
+                guard let firstScreen = NSScreen.screens.first else {
+                    print("❌ [CaptureEngine] NSScreen.screens 为空，跳过该屏幕")
+                    continue
+                }
+                let cgRect = CGRect(x: rect.origin.x, y: firstScreen.frame.height - rect.origin.y - rect.height, width: rect.width, height: rect.height)
                 
                 if let fallbackImage = CGWindowListCreateImage(cgRect, .optionOnScreenOnly, kCGNullWindowID, .nominalResolution) {
                     captures.append(ScreenCapture(screen: screen, image: fallbackImage))

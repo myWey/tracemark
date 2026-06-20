@@ -1668,7 +1668,8 @@ struct OverlayRootView: View {
             height: rect.height * scale
         )
         
-        var cleanCropped = capture.image.cropping(to: cropRect)!
+        guard let cropped = capture.image.cropping(to: cropRect) else { return }
+        var cleanCropped = cropped
         let shiftedAnnotations = offsetAnnotations(annotations, by: rect.origin)
         
         let isWindowSnap = (hoverWindowRect != nil && rect == hoverWindowRect)
@@ -1740,7 +1741,8 @@ struct OverlayRootView: View {
         )
         
         // 复制原图时必须使用截图时捕获的屏幕快照，不可重新捕获窗口（避免将当前 overlay 上的 AI 标记带入原图）
-        var cleanCropped = capture.image.cropping(to: cropRect)!
+        guard let cropped = capture.image.cropping(to: cropRect) else { return }
+        var cleanCropped = cropped
         let shiftedAnnotations = offsetAnnotations(annotations, by: rect.origin)
         let aiMarkers = shiftedAnnotations.filter { $0.type == .aiMarker }
 
@@ -1821,7 +1823,8 @@ struct OverlayRootView: View {
             height: rect.height * scale
         )
         
-        var cleanCropped = capture.image.cropping(to: cropRect)!
+        guard let cropped = capture.image.cropping(to: cropRect) else { return nil }
+        var cleanCropped = cropped
         let isWindowSnap = (hoverWindowRect != nil && rect == hoverWindowRect)
         let windowCornerRadius: CGFloat = 14.0 * scale
 
@@ -1877,7 +1880,8 @@ struct OverlayRootView: View {
             height: rect.height * scale
         )
         
-        var cleanCropped = capture.image.cropping(to: cropRect)!
+        guard let cropped = capture.image.cropping(to: cropRect) else { return }
+        var cleanCropped = cropped
         let isWindowSnap = (hoverWindowRect != nil && rect == hoverWindowRect)
         let windowCornerRadius: CGFloat = 14.0 * scale
         // 窗口吸附截图：优先使用 CGWindowListCreateImage 获取原生透明窗口（无阴影），并应用硬圆角遮罩
