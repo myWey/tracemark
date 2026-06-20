@@ -21,5 +21,22 @@ docs/
 # AgentOS documents (Excluded from public repo for privacy)
 .agent/
 AGENTS.md
+CLAUDE.md
+lefthook.yml
+.trae/
+eval/
+shared/
+build_artifacts/
+Tests/
 log.txt
 AppIcon.icns
+
+# AgentOS skeleton scripts (project scripts in scripts/ are tracked)
+scripts/build.sh
+scripts/test.sh
+scripts/lint.sh
+scripts/typecheck.sh
+scripts/update-agentos.sh
+scripts/sync-shims.py
+scripts/sync-shims.sh
+scripts/antigravity-sync.sh
