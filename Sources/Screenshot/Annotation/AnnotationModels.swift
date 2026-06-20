@@ -227,7 +227,7 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
     // MARK: - Codable Custom Mapping
     
     enum CodingKeys: String, CodingKey {
-        case id, type, startPoint, endPoint, points, color, lineWidth, text, fontStyle, fontSize, counterValue, calloutOffset
+        case id, type, startPoint, endPoint, points, color, lineWidth, text, fontStyle, fontSize, counterValue, calloutOffset, customCounterString, customWidth
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -248,6 +248,8 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
         try container.encode(fontStyle, forKey: .fontStyle)
         try container.encode(fontSize, forKey: .fontSize)
         try container.encode(counterValue, forKey: .counterValue)
+        try container.encodeIfPresent(customCounterString, forKey: .customCounterString)
+        try container.encodeIfPresent(customWidth, forKey: .customWidth)
     }
 
     public init(from decoder: Decoder) throws {
@@ -267,6 +269,8 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
         self.fontStyle = try container.decodeIfPresent(TextStyle.self, forKey: .fontStyle)
         self.fontSize = try container.decodeIfPresent(CGFloat.self, forKey: .fontSize)
         self.counterValue = try container.decodeIfPresent(Int.self, forKey: .counterValue)
+        self.customCounterString = try container.decodeIfPresent(String.self, forKey: .customCounterString)
+        self.customWidth = try container.decodeIfPresent(CGFloat.self, forKey: .customWidth)
     }
 }
 

@@ -2,11 +2,11 @@ import Cocoa
 
 // 纯 AppKit 入口：绕过 SwiftUI App 生命周期，确保手动创建的 NSWindow/NSPanel
 // 能正确被 macOS 窗口管理器渲染。这是 macOS 菜单栏工具的标准做法。
-// 确保单实例运行，杀掉旧的 Screenshot 进程
+// 确保单实例运行，杀掉旧的 TraceMark 进程
 let runningApps = NSWorkspace.shared.runningApplications
 for runningApp in runningApps {
-    if runningApp.localizedName == "Screenshot" && runningApp != NSRunningApplication.current {
-        print("⚠️ [main] 发现旧版 Screenshot 进程 (PID: \(runningApp.processIdentifier))，正在终止...")
+    if runningApp.localizedName == "TraceMark" && runningApp != NSRunningApplication.current {
+        print("⚠️ [main] 发现旧版 TraceMark 进程 (PID: \(runningApp.processIdentifier))，正在终止...")
         runningApp.forceTerminate()
     }
 }

@@ -67,7 +67,7 @@ public class HistoryManager {
             let encoder = JSONEncoder()
             encoder.outputFormatting = .prettyPrinted
             let data = try encoder.encode(self.records)
-            try data.write(to: metadataURL)
+            try data.write(to: metadataURL, options: .atomic)
         } catch {
             print("❌ [HistoryManager] 无法保存元数据: \(error)")
         }
