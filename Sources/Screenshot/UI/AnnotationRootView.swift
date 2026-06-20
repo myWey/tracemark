@@ -1524,13 +1524,16 @@ struct BlurMosaicLiveView: View {
     /// 预计算的全图效果图（模糊或马赛克版）
     @State private var effectImage: NSImage?
 
-    private static let ciContext = CIContext()
+    static let ciContext = CIContext()
     /// 缓存：key = "width x height - effectType"，value = 预计算效果图
     /// 同一张截图的 blur/mosaic 效果相同，所有实例共享缓存
     private static var effectCache: [String: NSImage] = [:]
+    private static let effectCacheLock = NSLock()
 
     /// 清除缓存（新截图会话开始时调用）
     static func clearEffectCache() {
+        effectCacheLock.lock()
+        defer { effectCacheLock.unlock() }
         effectCache.removeAll()
     }
 
@@ -1588,7 +1591,10 @@ struct BlurMosaicLiveView: View {
         let key = Self.cacheKey(for: cgImage, type: effectType)
 
         // 1. 先查缓存：如果同一张图已预计算过，直接使用（消除实例重建闪烁）
-        if let cached = Self.effectCache[key] {
+        Self.effectCacheLock.lock()
+        let cached = Self.effectCache[key]
+        Self.effectCacheLock.unlock()
+        if let cached = cached {
             self.effectImage = cached
             return
         }
@@ -1602,20 +1608,22 @@ struct BlurMosaicLiveView: View {
                 let ciImage = CIImage(cgImage: cgImage)
                 let filter = CIFilter.gaussianBlur()
                 filter.inputImage = ciImage.clampedToExtent()
-                filter.radius = 8
+                filter.radius = Float(EffectConfig.blurRadius)
                 resultCGImage = filter.outputImage.flatMap { out in
                     Self.ciContext.createCGImage(out, from: ciImage.extent)
                 }
             } else if effectType == .mosaic {
                 // CoreGraphics 双向采样，产生均匀方块
-                resultCGImage = createMosaicCGImage(cgImage, blockSize: 8)
+                resultCGImage = createMosaicCGImage(cgImage, blockSize: EffectConfig.mosaicBlockSize)
             }
 
             if let result = resultCGImage {
                 let nsImage = NSImage(cgImage: result, size: size)
                 DispatchQueue.main.async {
                     // 存入缓存供其他实例使用
+                    Self.effectCacheLock.lock()
                     Self.effectCache[key] = nsImage
+                    Self.effectCacheLock.unlock()
                     self.effectImage = nsImage
                 }
             }

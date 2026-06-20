@@ -2,6 +2,12 @@ import SwiftUI
 import CoreImage
 import CoreImage.CIFilterBuiltins
 
+/// 模糊/马赛克效果的共享参数，确保实时绘制与导出一致
+enum EffectConfig {
+    static let blurRadius = 8.0
+    static let mosaicBlockSize = 8
+}
+
 /// 同步将 blur/mosaic 画笔效果绘制到 CGImage 上。
 /// 导出时使用，避免 SwiftUI ImageRenderer 无法等待 BlurMosaicLiveView 异步加载。
 /// 与显示路径完全一致：全图预计算效果 + 笔触 mask blend，保证导出与屏幕显示相同。
@@ -10,7 +16,7 @@ func applyBrushEffects(to sourceImage: CGImage, annotations: [AnnotationItem], d
     let mosaicItems = annotations.filter { $0.type == .mosaic }
     guard !blurItems.isEmpty || !mosaicItems.isEmpty else { return sourceImage }
 
-    let ciContext = CIContext()
+    let ciContext = BlurMosaicLiveView.ciContext
     let scaleX = CGFloat(sourceImage.width) / displaySize.width
     let scaleY = CGFloat(sourceImage.height) / displaySize.height
     let avgScale = (scaleX + scaleY) / 2
@@ -23,7 +29,7 @@ func applyBrushEffects(to sourceImage: CGImage, annotations: [AnnotationItem], d
         let ciImage = CIImage(cgImage: sourceImage)
         let filter = CIFilter.gaussianBlur()
         filter.inputImage = ciImage.clampedToExtent()
-        filter.radius = 8
+        filter.radius = Float(EffectConfig.blurRadius)
         if let out = filter.outputImage {
             blurredFullImage = ciContext.createCGImage(out, from: ciImage.extent)
         }
@@ -32,7 +38,7 @@ func applyBrushEffects(to sourceImage: CGImage, annotations: [AnnotationItem], d
     // 2. 预计算全图马赛克版（如果有 mosaic 标注）
     var mosaicFullImage: CGImage?
     if !mosaicItems.isEmpty {
-        mosaicFullImage = createMosaicCGImage(sourceImage, blockSize: 8)
+        mosaicFullImage = createMosaicCGImage(sourceImage, blockSize: EffectConfig.mosaicBlockSize)
     }
 
     // 3. 对每个标注，用笔触 mask blend 效果图到全图
