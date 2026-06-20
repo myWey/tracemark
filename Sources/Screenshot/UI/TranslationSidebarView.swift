@@ -91,7 +91,7 @@ public struct TranslationSidebarView: View {
             HStack(spacing: 12) {
                 Button(action: onRetranslate) {
                     HStack(spacing: 4) {
-                        Image(systemName: "translate")
+                        Image(systemName: sfSymbol("translate", fallback: "globe"))
                         Text("重新翻译")
                     }
                     .font(.system(size: 13, weight: .medium))

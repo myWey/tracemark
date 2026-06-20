@@ -1,4 +1,10 @@
 import SwiftUI
+import AppKit
+
+/// 如果 name 在当前 macOS 版本不可用，则返回 fallback SF Symbol 名称
+public func sfSymbol(_ name: String, fallback: String) -> String {
+    NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil ? name : fallback
+}
 
 public struct TMDesign {
     public struct Colors {

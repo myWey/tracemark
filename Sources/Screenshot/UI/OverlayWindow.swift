@@ -722,11 +722,13 @@ struct OverlayRootView: View {
                     clipRect: finalRect
                 )
                 
-                // 3. 中层：半透明变暗背景（挖空选区）
-                InverseRectangle(subRect: selectedRect)
-                    .fill(Color.black.opacity(0.45), style: FillStyle(eoFill: true))
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .allowsHitTesting(false) // 让事件穿透
+                // 3. 中层：半透明变暗背景（裁剪和编辑态都显示，选区内挖空，选区外变暗）
+                if let selectedRect = selectedRect {
+                    InverseRectangle(subRect: selectedRect)
+                        .fill(Color.black.opacity(0.45), style: FillStyle(eoFill: true))
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .allowsHitTesting(false) // 让事件穿透
+                }
                 
                 // 3.5 窗口吸附高亮层
                 if sessionState == .cropping, selectedRect == nil, let hoverRect = hoverWindowRect {
@@ -752,21 +754,12 @@ struct OverlayRootView: View {
                 
                 // 4. 选区边框与尺寸标签
                 if let rect = selectedRect {
-                    let isTextSelection: Bool = {
-                        guard sessionState != .cropping, let selectedId = selectedAnnotationId else { return false }
-                        guard let foundItem = annotations.first(where: { $0.id == selectedId }) else { return false }
-                        let t = foundItem.type
-                        return t == .text || t == .numberedText
-                    }()
-                    
-                    // 蓝色精致边框 (对于文本类型，在 AnnotationRootView 内部绘制以解决延迟割裂感)
-                    if !isTextSelection {
-                        Rectangle()
-                            .stroke(Color.blue.opacity(sessionState == .cropping ? 1.0 : 0.8), lineWidth: 1.5)
-                            .frame(width: rect.width, height: rect.height)
-                            .offset(x: rect.minX, y: rect.minY)
-                            .allowsHitTesting(false)
-                    }
+                    // 蓝色精致边框：始终显示，文本编辑时不隐藏，避免用户无法区分选区内外
+                    Rectangle()
+                        .stroke(Color.blue.opacity(sessionState == .cropping ? 1.0 : 0.8), lineWidth: 1.5)
+                        .frame(width: rect.width, height: rect.height)
+                        .offset(x: rect.minX, y: rect.minY)
+                        .allowsHitTesting(false)
                     
                     if sessionState == .cropping {
                         // 实时大小气泡标签
@@ -778,7 +771,7 @@ struct OverlayRootView: View {
                             .background(Color.blue.opacity(0.85))
                             .cornerRadius(4)
                             .offset(x: rect.minX, y: rect.minY - 26) // 显示在选区上方
-                    } else if !isTextSelection {
+                    } else {
                         // 绘制 8 个控制柄
                         ForEach(DragHandle.allCases, id: \.self) { handle in
                             Circle()
@@ -944,6 +937,8 @@ struct OverlayRootView: View {
         }
         .onAppear {
             self.availableWindows = WindowSnapper.getVisibleWindows(on: capture.screen)
+            // 清除上一张截图的效果缓存
+            BlurMosaicLiveView.clearEffectCache()
         }
         .onChange(of: selectedTool, perform: handleSelectedToolChanged)
         .edgesIgnoringSafeArea(.all)
@@ -1245,22 +1240,23 @@ struct OverlayRootView: View {
             currentPoint = point
         } else {
             // Editing State
-            
+            let editBounds = finalRect
+
             // Check if moving/resizing an annotation
             if let selectedId = selectedAnnotationId,
                let index = annotations.firstIndex(where: { $0.id == selectedId }),
                let initialItem = annotationInitialItem,
                let start = annotationDragStartPoint {
-                
+
                 let dx = point.x - start.x
                 let dy = point.y - start.y
                 var updatedItem = initialItem
-                
+
                 if let handle = annotationActiveHandle {
                     // Resize
                     let initRect = initialItem.rect
                     var newRect = initRect
-                    
+
                     switch handle {
                     case .left:
                         newRect.origin.x = min(initRect.maxX - 5, initRect.origin.x + dx)
@@ -1292,7 +1288,7 @@ struct OverlayRootView: View {
                         updatedItem.move(by: CGSize(width: dx, height: dy))
                         newRect = updatedItem.rect
                     }
-                    
+
                     updatedItem.resize(to: newRect, from: initRect)
                 } else {
                     // Move
@@ -1304,22 +1300,22 @@ struct OverlayRootView: View {
                         updatedItem.move(by: CGSize(width: dx, height: dy))
                     }
                 }
-                
-                annotations[index] = updatedItem
+
+                annotations[index] = clampedAnnotation(updatedItem, to: editBounds)
                 return
             }
-            
+
             if let handle = activeHandle, let initRect = initialRectBeforeDrag, let start = dragStartPoint {
                 let dx = point.x - start.x
                 let dy = point.y - start.y
-                
+
                 if handle == .calloutOrigin {
                     // This is handled in the selectedId branch above usually, but just in case
                     return
                 }
-                
+
                 var newRect = initRect
-                
+
                 switch handle {
                 case .left:
                     newRect.origin.x = min(initRect.maxX - 5, initRect.origin.x + dx)
@@ -1353,19 +1349,28 @@ struct OverlayRootView: View {
                 finalRect = newRect
                 return
             }
-            
+
             if selectedTool != .text {
-                if currentAnnotation?.isFreehandTool == true {
-                    if let lastPoint = currentAnnotation?.points?.last {
-                        let distance = hypot(point.x - lastPoint.x, point.y - lastPoint.y)
+                if var current = currentAnnotation, current.isFreehandTool {
+                    var clampedPoint = point
+                    if let bounds = editBounds {
+                        clampedPoint = CGPoint(
+                            x: min(max(point.x, bounds.minX), bounds.maxX),
+                            y: min(max(point.y, bounds.minY), bounds.maxY)
+                        )
+                    }
+                    if current.points == nil { current.points = [] }
+                    if let lastPoint = current.points?.last {
+                        let distance = hypot(clampedPoint.x - lastPoint.x, clampedPoint.y - lastPoint.y)
                         if distance > 3.0 { // 仅当移动超过 3px 时追加点，大幅降低 SwiftUI 重绘压力
-                            currentAnnotation?.points?.append(point)
-                            currentAnnotation?.endPoint = point
+                            current.points?.append(clampedPoint)
+                            current.endPoint = clampedPoint
                         }
                     } else {
-                        currentAnnotation?.points?.append(point)
-                        currentAnnotation?.endPoint = point
+                        current.points?.append(clampedPoint)
+                        current.endPoint = clampedPoint
                     }
+                    currentAnnotation = current
                 } else if currentAnnotation?.type == .rectText {
                     currentAnnotation?.points?[1] = point
                     currentAnnotation?.endPoint = point
@@ -1625,6 +1630,23 @@ struct OverlayRootView: View {
         }
     }
 
+    /// 将标注整体平移，使其包围盒不超出 bounds（用于拖拽/缩放后兜底，不裁剪内容）。
+    private func clampedAnnotation(_ item: AnnotationItem, to bounds: CGRect?) -> AnnotationItem {
+        guard let bounds = bounds, bounds.width > 0, bounds.height > 0 else { return item }
+        var item = item
+        let boundingRect = item.rect
+        var dx: CGFloat = 0
+        var dy: CGFloat = 0
+        if boundingRect.minX < bounds.minX { dx = bounds.minX - boundingRect.minX }
+        if boundingRect.minY < bounds.minY { dy = bounds.minY - boundingRect.minY }
+        if boundingRect.maxX > bounds.maxX { dx = bounds.maxX - boundingRect.maxX }
+        if boundingRect.maxY > bounds.maxY { dy = bounds.maxY - boundingRect.maxY }
+        if dx != 0 || dy != 0 {
+            item.move(by: CGSize(width: dx, height: dy))
+        }
+        return item
+    }
+
     private func handleDelete() {
         if let selectedId = selectedAnnotationId {
             prepareForWrite()
@@ -1698,12 +1720,18 @@ struct OverlayRootView: View {
             return
         }
 
+        // 先同步把 blur/mosaic 画笔效果 burn 到原图上；ImageRenderer 不会等待 ImageEffectView 异步加载
+        let displaySize = CGSize(width: rect.width, height: rect.height)
+        let hasBlurMosaic = exportAnnotations.contains { $0.type == .blur || $0.type == .mosaic }
+        let sourceImage = hasBlurMosaic ? (applyBrushEffects(to: cleanCropped, annotations: exportAnnotations, displaySize: displaySize) ?? cleanCropped) : cleanCropped
+
         let exportView = AnnotationCanvasLayer(
-            image: cleanCropped,
-            displaySize: CGSize(width: rect.width, height: rect.height),
+            image: sourceImage,
+            displaySize: displaySize,
             annotations: exportAnnotations,
             currentAnnotation: nil,
-            cornerRadius: 0
+            cornerRadius: 0,
+            skipBlurMosaic: hasBlurMosaic
         )
         let renderer = ImageRenderer(content: exportView)
         renderer.scale = scale
@@ -1737,20 +1765,14 @@ struct OverlayRootView: View {
             height: rect.height * scale
         )
         
+        // 复制原图时必须使用截图时捕获的屏幕快照，不可重新捕获窗口（避免将当前 overlay 上的 AI 标记带入原图）
         var cleanCropped = capture.image.cropping(to: cropRect)!
         let shiftedAnnotations = offsetAnnotations(annotations, by: rect.origin)
         let aiMarkers = shiftedAnnotations.filter { $0.type == .aiMarker }
-        
-        // 窗口吸附截图：与 exportAndClose / 保存逻辑完全一致
+
         let isWindowSnap = (hoverWindowRect != nil && rect == hoverWindowRect)
         let windowCornerRadius: CGFloat = 14.0 * scale
-        if isWindowSnap, let winID = hoverWindowID {
-            let options: CGWindowImageOption = [.boundsIgnoreFraming, .bestResolution]
-            if let windowImage = CGWindowListCreateImage(.null, .optionIncludingWindow, winID, options) {
-                cleanCropped = windowImage
-            }
-        }
-        // 窗口截图：应用硬圆角遮罩，清除圆角处半透明白边后再写入剪贴板/历史
+        // 窗口截图：仅对原快照应用圆角遮罩，清除圆角处半透明白边；不重新捕获窗口内容
         if isWindowSnap {
             cleanCropped = applyWindowCornerMask(to: cleanCropped, cornerRadius: windowCornerRadius, inset: 1.0) ?? cleanCropped
         }
@@ -1839,13 +1861,17 @@ struct OverlayRootView: View {
         }
 
         let shiftedAnnotations = offsetAnnotations(annotations, by: rect.origin)
-        
+        let displaySize = CGSize(width: rect.width, height: rect.height)
+        let hasBlurMosaic = shiftedAnnotations.contains { $0.type == .blur || $0.type == .mosaic }
+        let sourceImage = hasBlurMosaic ? (applyBrushEffects(to: cleanCropped, annotations: shiftedAnnotations, displaySize: displaySize) ?? cleanCropped) : cleanCropped
+
         let exportView = AnnotationCanvasLayer(
-            image: cleanCropped,
-            displaySize: CGSize(width: rect.width, height: rect.height),
+            image: sourceImage,
+            displaySize: displaySize,
             annotations: shiftedAnnotations,
             currentAnnotation: nil,
-            cornerRadius: 0
+            cornerRadius: 0,
+            skipBlurMosaic: hasBlurMosaic
         )
         let renderer = ImageRenderer(content: exportView)
         renderer.scale = scale
@@ -2108,7 +2134,7 @@ struct UnifiedToolbarView: View {
                         )
 
                         IconButtonWithTooltip(
-                            icon: "translate",
+                            icon: sfSymbol("translate", fallback: "globe"),
                             tooltipKey: "翻译文字",
                             action: onTranslate
                         )
@@ -2188,7 +2214,7 @@ struct GroupButton: View {
         case .text: return "a.square"
         case .numberedText: return "text.badge.plus"
         case .counter: return "1.circle.fill"
-        case .rectText: return "bubble.and.pencil"
+        case .rectText: return sfSymbol("bubble.and.pencil", fallback: "text.bubble")
         case .pencil: return "pencil.tip"
         case .highlighter: return "highlighter"
         case .blur: return "drop.fill"
@@ -2452,11 +2478,12 @@ struct ExportDropdownButton: View {
             ZStack {
                 Image(systemName: "sparkles")
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.white)
+                    // 有 AI 标记时图标为白色（点亮），无标记时保持可见但为灰色，避免看起来像禁用
+                    .foregroundColor(aiMarkerCount > 0 ? .white : Color.gray.opacity(0.9))
 
                 Image(systemName: "chevron.down")
                     .font(.system(size: 5, weight: .bold))
-                    .foregroundColor(.white.opacity(0.85))
+                    .foregroundColor(aiMarkerCount > 0 ? Color.white.opacity(0.85) : Color.gray.opacity(0.7))
                     .offset(x: 9, y: 9)
 
                 // 计数角标：使用与 AI marker 一致的紫色
@@ -2471,7 +2498,10 @@ struct ExportDropdownButton: View {
                 }
             }
             .frame(width: 32, height: 32)
-            .background(TMDesign.Colors.purple.opacity(isShowingPopover ? 0.85 : 0.7))
+            // 有 AI 标记时按钮为紫色主题（可导出状态）；无标记时灰色背景，仍可点击打开提示
+            .background(aiMarkerCount > 0
+                ? TMDesign.Colors.purple.opacity(isShowingPopover ? 0.85 : 0.7)
+                : Color.gray.opacity(isShowingPopover ? 0.45 : 0.3))
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .contentShape(Rectangle())
         }

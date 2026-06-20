@@ -1,6 +1,7 @@
 import Cocoa
 import SwiftUI
 import UniformTypeIdentifiers
+import Carbon
 
 // 注意：入口已迁移至 main.swift（纯 AppKit 生命周期）
 
@@ -28,7 +29,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 1. 创建状态栏图标与菜单
         setupStatusItem()
         
-        // 2. 注册全局快捷键 Control + Command + A
+        // 2. 注册全局快捷键（默认 Option + A）
         HotkeyManager.shared.register { [weak self] in
             self?.triggerCapture()
         }
@@ -116,11 +117,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     @objc private func updateMenu() {
         guard let menu = statusItem?.menu else { return }
+        
         menu.removeAllItems()
         
         let lm = LanguageManager.shared
         
-        let shortcutStr = UserDefaults.standard.string(forKey: "captureShortcut") ?? "Option + A"
+        let shortcutStr = formatShortcut(keyCode: HotkeyManager.shared.currentKeyCode,
+                                         modifiers: HotkeyManager.shared.currentModifiers)
         let captureTitle = "\(lm.localizedString(forKey: "区域截图")) (\(shortcutStr))"
         let captureItem = NSMenuItem(title: captureTitle, action: #selector(triggerCaptureAction), keyEquivalent: "")
         captureItem.target = self
@@ -180,6 +183,51 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     private var isCapturing = false
+    
+    /// 将 keyCode + Carbon modifiers 格式化为可读快捷键字符串
+    private func formatShortcut(keyCode: UInt16, modifiers: UInt32) -> String {
+        var parts: [String] = []
+        if (modifiers & UInt32(controlKey)) != 0 { parts.append("Control") }
+        if (modifiers & UInt32(optionKey)) != 0 { parts.append("Option") }
+        if (modifiers & UInt32(shiftKey)) != 0 { parts.append("Shift") }
+        if (modifiers & UInt32(cmdKey)) != 0 { parts.append("Command") }
+        
+        let key: String
+        switch Int(keyCode) {
+        case 0: key = "A"
+        case 1: key = "S"
+        case 2: key = "D"
+        case 3: key = "F"
+        case 11: key = "B"
+        case 12: key = "Q"
+        case 13: key = "W"
+        case 14: key = "E"
+        case 15: key = "R"
+        case 16: key = "Y"
+        case 17: key = "T"
+        case 31: key = "O"
+        case 32: key = "U"
+        case 34: key = "I"
+        case 35: key = "P"
+        case 36: key = "Return"
+        case 37: key = "L"
+        case 38: key = "J"
+        case 39: key = "Quote"
+        case 40: key = "K"
+        case 41: key = "Semicolon"
+        case 45: key = "N"
+        case 46: key = "M"
+        case 47: key = "Period"
+        case 48: key = "Tab"
+        case 49: key = "Space"
+        case 50: key = "Grave"
+        case 51: key = "Delete"
+        case 53: key = "Esc"
+        default: key = "Key(\(keyCode))"
+        }
+        parts.append(key)
+        return parts.joined(separator: " + ")
+    }
     
     /// 触发整个截图核心工作流
     private func triggerCapture() {

@@ -23,6 +23,10 @@ let package = Package(
             swiftSettings: [
                 .swiftLanguageMode(.v5)
             ]
+        ),
+        .testTarget(
+            name: "TraceMarkTests",
+            dependencies: []
         )
     ]
 )

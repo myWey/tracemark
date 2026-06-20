@@ -702,15 +702,16 @@ public struct AnnotationRootView: View {
     
     private func handleDragChange(_ point: CGPoint) {
         lastDragPoint = point
+        let canvasBounds = CGRect(origin: .zero, size: originalSize)
         if let selectedId = selectedAnnotationId,
            let index = annotations.firstIndex(where: { $0.id == selectedId }),
            let initialItem = annotationInitialItem,
            let start = annotationDragStartPoint {
-            
+
             let dx = point.x - start.x
             let dy = point.y - start.y
             var updatedItem = initialItem
-            
+
             if let handle = annotationActiveHandle {
                 if handle == .calloutOrigin {
                     updatedItem.move(by: CGSize(width: dx, height: dy))
@@ -739,14 +740,31 @@ public struct AnnotationRootView: View {
                     updatedItem.move(by: CGSize(width: dx, height: dy))
                 }
             }
-            annotations[index] = updatedItem
+            annotations[index] = clampedAnnotation(updatedItem, to: canvasBounds)
             return
         }
-        
+
         if selectedTool != .text {
-            if currentAnnotation?.isFreehandTool == true {
-                currentAnnotation?.points?.append(point)
-                currentAnnotation?.endPoint = point
+            if var current = currentAnnotation, current.isFreehandTool {
+                var clampedPoint = point
+                if !canvasBounds.isEmpty, !canvasBounds.contains(point) {
+                    clampedPoint = CGPoint(
+                        x: min(max(point.x, canvasBounds.minX), canvasBounds.maxX),
+                        y: min(max(point.y, canvasBounds.minY), canvasBounds.maxY)
+                    )
+                }
+                if current.points == nil { current.points = [] }
+                if let lastPoint = current.points?.last {
+                    let distance = hypot(clampedPoint.x - lastPoint.x, clampedPoint.y - lastPoint.y)
+                    if distance > 3.0 {
+                        current.points?.append(clampedPoint)
+                        current.endPoint = clampedPoint
+                    }
+                } else {
+                    current.points?.append(clampedPoint)
+                    current.endPoint = clampedPoint
+                }
+                currentAnnotation = current
             } else if currentAnnotation?.type == .rectText {
                 currentAnnotation?.points?[1] = point
                 currentAnnotation?.endPoint = point
@@ -815,6 +833,23 @@ public struct AnnotationRootView: View {
         }
     }
     
+    /// 将标注整体平移，使其包围盒不超出 bounds（用于拖拽/缩放后兜底，不裁剪内容）。
+    private func clampedAnnotation(_ item: AnnotationItem, to bounds: CGRect) -> AnnotationItem {
+        guard bounds.width > 0, bounds.height > 0 else { return item }
+        var item = item
+        let boundingRect = item.rect
+        var dx: CGFloat = 0
+        var dy: CGFloat = 0
+        if boundingRect.minX < bounds.minX { dx = bounds.minX - boundingRect.minX }
+        if boundingRect.minY < bounds.minY { dy = bounds.minY - boundingRect.minY }
+        if boundingRect.maxX > bounds.maxX { dx = bounds.maxX - boundingRect.maxX }
+        if boundingRect.maxY > bounds.maxY { dy = bounds.maxY - boundingRect.maxY }
+        if dx != 0 || dy != 0 {
+            item.move(by: CGSize(width: dx, height: dy))
+        }
+        return item
+    }
+
     private func updateSelectedAnnotation(color: Color? = nil, fontSize: CGFloat? = nil, lineWidth: CGFloat? = nil, style: TextStyle? = nil) {
         guard let selectedId = selectedAnnotationId,
               let index = annotations.firstIndex(where: { $0.id == selectedId }) else { return }
@@ -1071,11 +1106,13 @@ public struct AnnotationRootView: View {
                        image.alphaInfo == .first || image.alphaInfo == .last
         let windowCornerRadius: CGFloat = 14.0 * scaleFactor
 
-        // 不再预处理原图，避免原始窗口 UI 被裁剪；只在最终渲染结果上做轻量圆角清理。
-        let sourceImage = image
+        // 先同步把 blur/mosaic 画笔效果 burn 到原图上；ImageRenderer 不会等待 ImageEffectView 异步加载，
+        // 因此导出前必须预处理，否则模糊/马赛克在复制图片中会丢失。
+        let sourceImage = applyBrushEffects(to: image, annotations: exportAnnotations, displaySize: originalSize) ?? image
+        let hasBlurMosaic = exportAnnotations.contains { $0.type == .blur || $0.type == .mosaic }
 
         let exportView = AnnotationCanvasLayer(
-            image: image,
+            image: sourceImage,
             displaySize: originalSize,
             annotations: exportAnnotations,
             currentAnnotation: nil,
@@ -1084,7 +1121,8 @@ public struct AnnotationRootView: View {
             editingCounterId: nil,
             onTextChanged: { _, _ in },
             onTextCommit: {},
-            onSizeChanged: { _, _ in }
+            onSizeChanged: { _, _ in },
+            skipBlurMosaic: hasBlurMosaic
         )
         .frame(width: originalSize.width, height: originalSize.height, alignment: .topLeading)
         .scaleEffect(scaleFactor, anchor: .topLeading)
@@ -1230,7 +1268,7 @@ struct AnnotationCanvasLayer: View {
     let annotations: [AnnotationItem]
     let currentAnnotation: AnnotationItem?
     var cornerRadius: CGFloat = 0
-    
+
     // 编辑状态相关
     var selectedAnnotationId: UUID? = nil
     var editingTextId: UUID? = nil
@@ -1240,6 +1278,8 @@ struct AnnotationCanvasLayer: View {
     var onCounterChanged: ((UUID, String) -> Void)? = nil
     var onSizeChanged: ((UUID, CGSize) -> Void)? = nil
     var clipRect: CGRect? = nil
+    // 导出时已经通过 applyBrushEffects 把 blur/mosaic burn 到原图上，避免 SwiftUI 异步渲染丢失
+    var skipBlurMosaic: Bool = false
     
     var body: some View {
         // 用于响应点击提交编辑态的透明背景，使用 contentShape 保证极低透明度下仍可命中
@@ -1294,20 +1334,25 @@ struct AnnotationCanvasLayer: View {
                 
                 ForEach(annotations) { item in
                     Group {
-                        AnnotationShapeView(
-                            item: item,
-                            isEditing: item.id == editingTextId,
-                            isEditingCounter: item.id == editingCounterId,
-                            isSelected: item.id == selectedAnnotationId,
-                            onTextChanged: onTextChanged,
-                            onTextCommit: onTextCommit,
-                            onCounterChanged: onCounterChanged,
-                            onSizeChanged: onSizeChanged,
-                            baseImage: image,
-                            displaySize: displaySize,
-                            clipRect: clipRect // 传入
-                        )
-                        
+                        // 导出时 blur/mosaic 已预处理到原图上，不再重复渲染
+                        if skipBlurMosaic && (item.type == .blur || item.type == .mosaic) {
+                            EmptyView()
+                        } else {
+                            AnnotationShapeView(
+                                item: item,
+                                isEditing: item.id == editingTextId,
+                                isEditingCounter: item.id == editingCounterId,
+                                isSelected: item.id == selectedAnnotationId,
+                                onTextChanged: onTextChanged,
+                                onTextCommit: onTextCommit,
+                                onCounterChanged: onCounterChanged,
+                                onSizeChanged: onSizeChanged,
+                                baseImage: image,
+                                displaySize: displaySize,
+                                clipRect: clipRect // 传入
+                            )
+                        }
+
                         if item.id == selectedAnnotationId && item.type != .text && item.type != .numberedText && item.type != .rectText {
                             // 绘制 8 个控制柄 
                             ForEach(DragHandle.allCases, id: \.self) { handle in
@@ -1323,28 +1368,51 @@ struct AnnotationCanvasLayer: View {
                 }
                 
                 if let current = currentAnnotation {
-                    AnnotationShapeView(
-                        item: current,
-                        isEditing: false,
-                        isEditingCounter: false,
-                        isSelected: false,
-                        onTextChanged: nil,
-                        onTextCommit: nil,
-                        onCounterChanged: nil,
-                        onSizeChanged: nil,
-                        baseImage: image,
-                        displaySize: displaySize,
-                        clipRect: clipRect // 传入
-                    )
+                    // 模糊/马赛克在绘制过程中直接渲染真实效果，让用户实时看到最终样式
+                    if current.type == .blur || current.type == .mosaic,
+                       let points = current.points, points.count > 1 {
+                        BlurMosaicLiveView(
+                            item: current,
+                            baseImage: image,
+                            displaySize: displaySize
+                        )
+                        .allowsHitTesting(false)
+                    } else {
+                        AnnotationShapeView(
+                            item: current,
+                            isEditing: false,
+                            isEditingCounter: false,
+                            isSelected: false,
+                            onTextChanged: nil,
+                            onTextCommit: nil,
+                            onCounterChanged: nil,
+                            onSizeChanged: nil,
+                            baseImage: image,
+                            displaySize: displaySize,
+                            clipRect: clipRect // 传入
+                        )
+                    }
                 }
             }
             .frame(width: displaySize.width, height: displaySize.height)
-            // 如果提供了 clipRect，则严格裁切，否则不裁切
-            .clipShape(Path(clipRect ?? CGRect(origin: .zero, size: displaySize)))
+            // 完全不裁切：Intel 上 clipShape 会导致矩形/椭圆/序号圆形等 Shape 透明；
+            // 标注范围由 handleDragChange 中的坐标钳制保证
         }
         .frame(width: displaySize.width, height: displaySize.height)
         .background(Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+}
+
+extension View {
+    /// 仅在 rect 非 nil 时应用 clipShape，避免 Intel 上无意义的全屏 Path 裁切导致 Shape 透明。
+    @ViewBuilder
+    func clipIfNeeded(to rect: CGRect?) -> some View {
+        if let rect = rect {
+            self.clipShape(Path(rect))
+        } else {
+            self
+        }
     }
 }
 
@@ -1389,6 +1457,178 @@ func rectTextBounds(_ item: AnnotationItem) -> CGRect? {
     let minY = min(pts[0].y, pts[1].y)
     let maxY = max(pts[0].y, pts[1].y)
     return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+}
+
+/// 用逐块平均色算法生成马赛克（与微信截图专利 CN105787874B 一致）。
+/// 对每个 blockSize×blockSize 区域计算 RGB 平均值，用平均色填充整个块。
+/// 使用原图 colorSpace，避免 premultipliedLast/First 不兼容导致颜色错误。
+func createMosaicCGImage(_ image: CGImage, blockSize: Int = 8) -> CGImage? {
+    let w = image.width
+    let h = image.height
+    guard w > 0, h > 0, blockSize > 0 else { return nil }
+
+    let colorSpace = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+    // 使用 premultipliedFirst + byteOrder32Little，macOS 最标准格式，兼容所有 CGImage
+    let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue
+    let bytesPerRow = w * 4
+
+    guard let context = CGContext(data: nil, width: w, height: h,
+                                   bitsPerComponent: 8, bytesPerRow: bytesPerRow,
+                                   space: colorSpace, bitmapInfo: bitmapInfo) else { return nil }
+    context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+
+    guard let dataPtr = context.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
+
+    // 逐块计算平均色并填充（专利权利要求 4：average-color-per-block）
+    for blockY in stride(from: 0, to: h, by: blockSize) {
+        for blockX in stride(from: 0, to: w, by: blockSize) {
+            let bw = min(blockSize, w - blockX)
+            let bh = min(blockSize, h - blockY)
+
+            var r: Int = 0, g: Int = 0, b: Int = 0, a: Int = 0, count: Int = 0
+
+            for py in 0..<bh {
+                for px in 0..<bw {
+                    let idx = ((blockY + py) * w + (blockX + px)) * 4
+                    // premultipliedFirst + byteOrder32Little: [BGRA] in memory
+                    b += Int(dataPtr[idx])
+                    g += Int(dataPtr[idx + 1])
+                    r += Int(dataPtr[idx + 2])
+                    a += Int(dataPtr[idx + 3])
+                    count += 1
+                }
+            }
+
+            let avgB = UInt8(b / count)
+            let avgG = UInt8(g / count)
+            let avgR = UInt8(r / count)
+            let avgA = UInt8(a / count)
+
+            // 用平均色填充整个块
+            for py in 0..<bh {
+                for px in 0..<bw {
+                    let idx = ((blockY + py) * w + (blockX + px)) * 4
+                    dataPtr[idx] = avgB
+                    dataPtr[idx + 1] = avgG
+                    dataPtr[idx + 2] = avgR
+                    dataPtr[idx + 3] = avgA
+                }
+            }
+        }
+    }
+
+    return context.makeImage()
+}
+
+/// 模糊/马赛克实时渲染视图（绘制过程中使用）
+/// 采用 Photoshop 式预计算模式：onAppear 时对全图做一次效果处理，
+/// 绘制时只更新笔触 mask，实现真正的实时交互。
+/// 使用静态缓存避免实例重建时重新预计算（消除完成后闪烁）。
+struct BlurMosaicLiveView: View {
+    let item: AnnotationItem
+    let baseImage: CGImage?
+    let displaySize: CGSize?
+
+    /// 预计算的全图效果图（模糊或马赛克版）
+    @State private var effectImage: NSImage?
+
+    private static let ciContext = CIContext()
+    /// 缓存：key = "width x height - effectType"，value = 预计算效果图
+    /// 同一张截图的 blur/mosaic 效果相同，所有实例共享缓存
+    private static var effectCache: [String: NSImage] = [:]
+
+    /// 清除缓存（新截图会话开始时调用）
+    static func clearEffectCache() {
+        effectCache.removeAll()
+    }
+
+    private static func cacheKey(for image: CGImage, type: AnnotationToolType) -> String {
+        return "\(image.width)x\(image.height)-\(type)"
+    }
+
+    var body: some View {
+        Group {
+            if let effectImg = effectImage, let size = displaySize {
+                if let points = item.points, points.count > 1 {
+                    // 预计算完成：用笔触路径做 mask，实时显示效果
+                    Image(nsImage: effectImg)
+                        .resizable()
+                        .frame(width: size.width, height: size.height)
+                        .mask(
+                            Canvas { context, _ in
+                                var path = Path()
+                                path.move(to: points.first!)
+                                path.addLines(points)
+                                context.stroke(path, with: .color(.black),
+                                    style: StrokeStyle(lineWidth: item.lineWidth, lineCap: .round, lineJoin: .round))
+                            }
+                        )
+                        .allowsHitTesting(false)
+                }
+            } else {
+                // 预计算未完成时显示轻量预览线
+                if let points = item.points, points.count > 1, let size = displaySize {
+                    let isBlur = item.type == .blur
+                    Canvas { context, _ in
+                        var path = Path()
+                        path.move(to: points.first!)
+                        path.addLines(points)
+                        let previewColor: Color = isBlur ? Color.blue.opacity(0.3) : Color.gray.opacity(0.5)
+                        context.stroke(path, with: .color(previewColor),
+                            style: StrokeStyle(lineWidth: item.lineWidth, lineCap: .round, lineJoin: .round))
+                    }
+                    .frame(width: size.width, height: size.height)
+                    .allowsHitTesting(false)
+                }
+            }
+        }
+        .id("blur-mosaic-live-\(item.id)")
+        .onAppear {
+            precomputeEffect()
+        }
+    }
+
+    /// 对全图做一次效果处理，后续绘制只需更新 mask
+    private func precomputeEffect() {
+        guard let cgImage = baseImage, let size = displaySize, effectImage == nil else { return }
+
+        let effectType = item.type
+        let key = Self.cacheKey(for: cgImage, type: effectType)
+
+        // 1. 先查缓存：如果同一张图已预计算过，直接使用（消除实例重建闪烁）
+        if let cached = Self.effectCache[key] {
+            self.effectImage = cached
+            return
+        }
+
+        // 2. 缓存未命中：异步预计算
+        DispatchQueue.global(qos: .userInitiated).async {
+            var resultCGImage: CGImage?
+
+            if effectType == .blur {
+                // 高斯模糊全图，半径固定 8px（图像像素空间）
+                let ciImage = CIImage(cgImage: cgImage)
+                let filter = CIFilter.gaussianBlur()
+                filter.inputImage = ciImage.clampedToExtent()
+                filter.radius = 8
+                resultCGImage = filter.outputImage.flatMap { out in
+                    Self.ciContext.createCGImage(out, from: ciImage.extent)
+                }
+            } else if effectType == .mosaic {
+                // CoreGraphics 双向采样，产生均匀方块
+                resultCGImage = createMosaicCGImage(cgImage, blockSize: 8)
+            }
+
+            if let result = resultCGImage {
+                let nsImage = NSImage(cgImage: result, size: size)
+                DispatchQueue.main.async {
+                    // 存入缓存供其他实例使用
+                    Self.effectCache[key] = nsImage
+                    self.effectImage = nsImage
+                }
+            }
+        }
+    }
 }
 
 /// 单个标注形状渲染
@@ -1445,24 +1685,33 @@ struct AnnotationShapeView: View {
                     
             case .pencil:
                 if let points = item.points, points.count > 1 {
+                    // 局部渲染：只绘制笔触包围盒，降低 Intel 全屏重绘压力
+                    let bounds = item.rect
+                    let localPoints = points.map { CGPoint(x: $0.x - bounds.minX, y: $0.y - bounds.minY) }
                     Canvas { context, size in
                         var path = Path()
-                        path.move(to: points.first!)
-                        path.addLines(points)
+                        path.move(to: localPoints.first!)
+                        path.addLines(localPoints)
                         context.stroke(path, with: .color(item.color), style: StrokeStyle(lineWidth: item.lineWidth, lineCap: .round, lineJoin: .round))
                     }
-                    .id("pencil-\(item.color)-\(item.lineWidth)")
+                    .id("pencil-\(item.id)")
+                    .frame(width: bounds.width, height: bounds.height)
+                    .offset(x: bounds.minX, y: bounds.minY)
                 }
-                
+
             case .highlighter:
                 if let points = item.points, points.count > 1 {
+                    let bounds = item.rect
+                    let localPoints = points.map { CGPoint(x: $0.x - bounds.minX, y: $0.y - bounds.minY) }
                     Canvas { context, size in
                         var path = Path()
-                        path.move(to: points.first!)
-                        path.addLines(points)
+                        path.move(to: localPoints.first!)
+                        path.addLines(localPoints)
                         context.stroke(path, with: .color(item.color.opacity(0.5)), style: StrokeStyle(lineWidth: item.lineWidth, lineCap: .round, lineJoin: .round))
                     }
-                    .id("highlighter-\(item.color)-\(item.lineWidth)")
+                    .id("highlighter-\(item.id)")
+                    .frame(width: bounds.width, height: bounds.height)
+                    .offset(x: bounds.minX, y: bounds.minY)
                 }
                     
             case .text, .numberedText, .rectText:
@@ -1537,9 +1786,9 @@ struct AnnotationShapeView: View {
                             .allowsHitTesting(false)
                         }
 
-                        // 矩形框：使用轻量填充 + 统一细边框，避免初始拖拽出现粗线
+                        // 矩形框：内部透明，只保留边框，避免遮挡底层图像
                         Rectangle()
-                            .fill(item.color.opacity(0.2))
+                            .fill(Color.clear)
                             .overlay(
                                 Rectangle()
                                     .stroke(item.color, lineWidth: rectLineWidth)
@@ -1730,29 +1979,13 @@ struct AnnotationShapeView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     
             case .blur, .mosaic:
-                if let points = item.points, points.count > 1 {
-                    ImageEffectView(
-                        type: item.type,
-                        rect: item.rect,
-                        baseImage: baseImage,
-                        displaySize: displaySize
-                    )
-                    .mask(
-                        Canvas { context, size in
-                            var path = Path()
-                            path.move(to: points.first!)
-                            path.addLines(points)
-                            context.stroke(path, with: .color(.black), style: StrokeStyle(lineWidth: item.lineWidth, lineCap: .round, lineJoin: .round))
-                        }
-                    )
-                } else {
-                    ImageEffectView(
-                        type: item.type,
-                        rect: item.rect,
-                        baseImage: baseImage,
-                        displaySize: displaySize
-                    )
-                }
+                // 使用与实时绘制相同的预计算全图效果 + mask 方式，
+                // 确保完成后效果与实时绘制完全一致（网格对齐、色块均匀）。
+                BlurMosaicLiveView(
+                    item: item,
+                    baseImage: baseImage,
+                    displaySize: displaySize
+                )
             
             case .aiMarker:
                 // 半透明紫色和虚线细边框
@@ -1893,7 +2126,7 @@ struct ToolButton: View {
         case .arrow: return "arrow.up.right"
         case .text: return "t.square"
         case .numberedText: return "text.badge.star"
-        case .rectText: return "bubble.and.pencil"
+        case .rectText: return sfSymbol("bubble.and.pencil", fallback: "text.bubble")
         case .counter: return "1.circle"
         case .pencil: return "paintbrush.pointed"
         case .highlighter: return "marker.fill"
@@ -1974,6 +2207,8 @@ struct AutoSizingTextView: NSViewRepresentable {
     
     func makeNSView(context: Context) -> AutoResizingNSTextView {
         let textView = AutoResizingNSTextView()
+        textView.wantsLayer = true
+        textView.layer?.backgroundColor = NSColor.clear.cgColor
         textView.backgroundColor = .clear
         textView.isRichText = false
         textView.font = .systemFont(ofSize: fontSize, weight: .semibold)
@@ -2016,9 +2251,13 @@ struct AutoSizingTextView: NSViewRepresentable {
             
             context.coordinator.removeOutsideClickMonitor()
         }
-        
-        textView.placeholderText = placeholder
-        
+
+        // 初始化 placeholder；refreshPlaceholder 统一刷新时机，避免多路径 needsDisplay 竞争
+        if let placeholder = placeholder {
+            textView.customPlaceholder = placeholder
+            textView.refreshPlaceholder()
+        }
+
         return textView
     }
 
@@ -2031,6 +2270,9 @@ struct AutoSizingTextView: NSViewRepresentable {
 
         nsView.isEditable = isEditable
         nsView.isSelectable = isEditable
+        // 保持透明背景，避免 placeholder 被系统背景覆盖
+        nsView.drawsBackground = false
+        nsView.backgroundColor = .clear
 
         if isEditable {
             context.coordinator.installOutsideClickMonitor(for: nsView)
@@ -2041,11 +2283,23 @@ struct AutoSizingTextView: NSViewRepresentable {
             nsView.string = text
             nsView.invalidateIntrinsicContentSize()
         }
-        nsView.font = .systemFont(ofSize: fontSize, weight: .semibold)
+
+        // 仅在值变化时更新 font/textColor，减少不必要刷新
+        let newFont = NSFont.systemFont(ofSize: fontSize, weight: .semibold)
+        if nsView.font != newFont {
+            nsView.font = newFont
+        }
         let nsColor = NSColor(textColor).usingColorSpace(.sRGB) ?? NSColor(textColor)
-        nsView.textColor = nsColor
-        nsView.placeholderText = placeholder
-        
+        if nsView.textColor != nsColor {
+            nsView.textColor = nsColor
+        }
+
+        // 仅在变化时更新 placeholder
+        let newPlaceholder = placeholder
+        if nsView.customPlaceholder != newPlaceholder {
+            nsView.customPlaceholder = newPlaceholder
+        }
+
         if let cw = customWidth {
             nsView.isHorizontallyResizable = false
             nsView.textContainer?.widthTracksTextView = true
@@ -2057,9 +2311,11 @@ struct AutoSizingTextView: NSViewRepresentable {
             nsView.textContainer?.widthTracksTextView = false
             nsView.textContainer?.containerSize = NSSize(width: maxWidth, height: CGFloat.greatestFiniteMagnitude)
         }
-        
+
         // Force layout update so intrinsicContentSize is accurate immediately
         nsView.invalidateIntrinsicContentSize()
+        // 统一刷新 placeholder，避免在多个 override 方法中重复 needsDisplay
+        nsView.refreshPlaceholder()
     }
 
     func makeCoordinator() -> Coordinator {
@@ -2136,54 +2392,64 @@ struct AutoSizingTextView: NSViewRepresentable {
 }
 
 class AutoResizingNSTextView: NSTextView {
-    var placeholderText: String? {
-        didSet {
-            if placeholderText != oldValue {
-                self.needsDisplay = true
-                self.invalidateIntrinsicContentSize()
-            }
-        }
+    /// 自定义 placeholder 文字
+    var customPlaceholder: String?
+
+    private func placeholderColor() -> NSColor {
+        (self.textColor ?? NSColor.gray).withAlphaComponent(0.5)
     }
-    
+
+    private var shouldShowPlaceholder: Bool {
+        string.isEmpty && customPlaceholder != nil
+    }
+
+    private func drawPlaceholder() {
+        guard shouldShowPlaceholder, let placeholder = customPlaceholder else { return }
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: self.font ?? NSFont.systemFont(ofSize: 16),
+            .foregroundColor: placeholderColor()
+        ]
+        placeholder.draw(at: NSPoint(x: 0, y: 0), withAttributes: attrs)
+    }
+
     override func resetCursorRects() {
         if self.isSelectable {
             super.resetCursorRects()
         }
     }
-    
+
     override var intrinsicContentSize: NSSize {
         guard let layoutManager = layoutManager, let textContainer = textContainer else {
             return super.intrinsicContentSize
         }
         layoutManager.ensureLayout(for: textContainer)
         let rect = layoutManager.usedRect(for: textContainer)
-        
+
         // When there is a placeholder and no text, we still need to provide enough width
         // for the placeholder so it isn't clipped
         var width = max(ceil(rect.width) + 2, 2)
         let height = max(ceil(rect.height), 10)
-        
-        if string.isEmpty, let placeholder = placeholderText {
+
+        if shouldShowPlaceholder, let placeholder = customPlaceholder {
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: self.font ?? NSFont.systemFont(ofSize: 16)
             ]
             let pSize = placeholder.size(withAttributes: attrs)
             width = max(width, pSize.width + 2)
         }
-        
+
         return NSSize(width: width, height: height)
     }
-    
+
     override func draw(_ dirtyRect: NSRect) {
+        // 确保 super.draw 在透明背景下进行，placeholder 在其后绘制
         super.draw(dirtyRect)
-        
-        if string.isEmpty, let placeholder = placeholderText {
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: self.font ?? NSFont.systemFont(ofSize: 16),
-                .foregroundColor: (self.textColor ?? NSColor.gray).withAlphaComponent(0.5)
-            ]
-            placeholder.draw(at: NSPoint(x: 0, y: 0), withAttributes: attrs)
-        }
+        drawPlaceholder()
+    }
+
+    /// 在文本变化、焦点切换、尺寸变化后统一刷新 placeholder，避免多路径重复 needsDisplay
+    func refreshPlaceholder() {
+        self.needsDisplay = true
     }
 }
 

@@ -1,0 +1,76 @@
+# agentOS framework-owned files — overwritten on update
+# Format: <path>  <kind>
+# kind: framework = overwrite; shared = merge by section markers
+# Files NOT listed here default to project-owned (preserved on update).
+
+# Rules
+.trae/rules/00-core-principles.md            framework
+.trae/rules/01-conventions-and-safety.md     framework
+.trae/rules/02-python-conventions.md         framework
+.trae/rules/03-ts-conventions.md             framework
+
+# Skills
+.trae/skills/code-review/SKILL.md            framework
+.trae/skills/context-engineering/SKILL.md    framework
+.trae/skills/debug-methodology/SKILL.md      framework
+.trae/skills/memory-management/SKILL.md      framework
+.trae/skills/plan-mode/SKILL.md              framework
+.trae/skills/project-onboarding/SKILL.md     framework
+.trae/skills/skill-creator/SKILL.md          framework
+.trae/skills/spec-driven/SKILL.md            framework
+.trae/skills/subagent-delegation/SKILL.md    framework
+.trae/skills/tdd-loop/SKILL.md               framework
+.trae/skills/verify-behavior/SKILL.md        framework
+
+# Agents
+.trae/agents/debugger.md                     framework
+.trae/agents/devops-engineer.md              framework
+.trae/agents/documentation-writer.md         framework
+.trae/agents/executor.md                     framework
+.trae/agents/explorer.md                     framework
+.trae/agents/orchestrator.md                 framework
+.trae/agents/planner.md                      framework
+.trae/agents/project-planner.md              framework
+.trae/agents/reviewer.md                     framework
+.trae/agents/security-auditor.md             framework
+.trae/agents/tester.md                       framework
+
+# Commands
+.trae/commands/autopilot.md                  framework
+.trae/commands/onboard.md                    framework
+.trae/commands/review.md                     framework
+.trae/commands/ship.md                       framework
+
+# Hooks
+.trae/hooks/debug-capture.sh                 framework
+.trae/hooks/post-edit-lint.sh                framework
+.trae/hooks/prompt-guard.sh                  framework
+.trae/hooks/protect-files.sh                 framework
+.trae/hooks/session-start.sh                 framework
+.trae/hooks/stop-check.sh                    framework
+.trae/hooks.json                             framework
+
+# MCP config
+.trae/mcp.json.template                      framework
+.trae/mcp.README.md                          framework
+
+# Specs directory placeholder
+.trae/specs/README.md                        framework
+
+# Memory (feature-lock is framework; project_memory is project-owned)
+.trae/memory/feature-lock.md                 framework
+
+# Eval
+eval/run-smoke.sh                            framework
+
+# Root entry points
+AGENTS.md                                    shared
+CLAUDE.md                                    framework
+
+# Docs (workflow-guide is framework; others are project-owned)
+docs/workflow-guide.md                       framework
+
+# Update mechanism
+.trae/VERSION                                framework
+.trae/MANIFEST                               framework
+scripts/update-agentos.sh                    framework

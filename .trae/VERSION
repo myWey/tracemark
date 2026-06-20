@@ -1,0 +1,7 @@
+version: 0.3.0
+installed: 2026-06-19
+# source: agentOS git repo URL. Embedded projects should change this to
+# the actual remote (e.g., https://github.com/user/agentOS.git).
+# "local" means this IS the source repo (no remote to pull from).
+source: local
+commit: current

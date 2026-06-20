@@ -1,0 +1,3 @@
+{
+  "_comment": "MCP servers disabled by default. Copy mcp.json.template and customize, then rename to mcp.json to enable."
+}

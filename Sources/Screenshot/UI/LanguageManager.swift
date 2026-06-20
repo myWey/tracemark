@@ -99,7 +99,14 @@ public class LanguageManager: ObservableObject {
 
         // 直接解析 .lproj/Localizable.strings，绕过 Bundle 查找的兼容性问题
         let candidates = [resolvedResourceBundle, Bundle.main]
-        let lprojNames = [code, code.lowercased(), code.components(separatedBy: "-").first, code.components(separatedBy: "-").first?.lowercased()].compactMap { $0 }
+        let codeComponents = code.components(separatedBy: "-")
+        let lprojCandidates: [String?] = [
+            code,
+            code.lowercased(),
+            codeComponents.first,
+            codeComponents.first?.lowercased()
+        ]
+        let lprojNames = lprojCandidates.compactMap { $0 }
 
         for bundle in candidates {
             for lprojName in lprojNames {
