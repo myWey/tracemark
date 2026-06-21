@@ -63,63 +63,6 @@ public struct AnnotationRootView: View {
             hoverPoint: .zero
         ))
     }
-    
-    private func commitTextEdit() {
-        if let currentEditing = editModel.editingTextId {
-            if let idx = editModel.annotations.firstIndex(where: { $0.id == currentEditing }) {
-                if (editModel.annotations[idx].text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    editModel.annotations.remove(at: idx)
-                } else {
-                    let item = editModel.annotations[idx]
-                    let fontSize = item.fontSize ?? 16.0
-                    let singleLineHeight = fontSize * 1.2 + 16
-                    if item.customWidth == nil,
-                       (item.text ?? "").contains("\n") || item.rect.height > singleLineHeight + 4 {
-                        editModel.annotations[idx].customWidth = item.rect.width
-                    }
-                }
-            }
-            editModel.editingTextId = nil
-        }
-        if let currentEditingCounter = editModel.editingCounterId {
-            if let idx = editModel.annotations.firstIndex(where: { $0.id == currentEditingCounter }) {
-                let newStr = editModel.annotations[idx].customCounterString ?? ""
-                editModel.reorderCounters(after: currentEditingCounter, newString: newStr)
-            }
-            editModel.editingCounterId = nil
-        }
-    }
-
-    /// 点击空白处提交所有编辑态（counter / text）
-    private func commitAllEdits() {
-        guard editModel.editingTextId != nil || editModel.editingCounterId != nil else { return }
-        // 先处理数据与排序；编辑态 ID 清空后，AutoSizingTextView.updateNSView
-        // 会检测到编辑态结束并安全地辞去 NSTextView 的第一响应者，
-        // 避免在 async 通知路径中直接访问可能已释放的 responder。
-        commitTextEdit()
-    }
-
-    private func deleteSelectedAnnotation() {
-        guard let selectedId = editModel.selectedAnnotationId,
-              let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }) else { return }
-
-        editModel.prepareForWrite()
-        let deletedItem = editModel.annotations[index]
-        editModel.annotations.remove(at: index)
-
-        // 序号顺延算法 (Phase 2)
-        if (deletedItem.type == .counter || deletedItem.type == .numberedText),
-           let deletedValue = deletedItem.counterValue {
-            for i in 0..<editModel.annotations.count {
-                if (editModel.annotations[i].type == .counter || editModel.annotations[i].type == .numberedText),
-                   let val = editModel.annotations[i].counterValue, val > deletedValue {
-                    editModel.annotations[i].counterValue = val - 1
-                }
-            }
-        }
-
-        editModel.selectedAnnotationId = nil
-    }
 
     public var body: some View {
         let content = HStack(spacing: 0) {
@@ -152,7 +95,7 @@ public struct AnnotationRootView: View {
                             .frame(width: containerGeo.size.width, height: containerGeo.size.height)
                             .onTapGesture {
                                 // 点击空白处时先提交所有编辑态，再清空选中
-                                commitAllEdits()
+                                editModel.commitAllEdits()
                                 editModel.selectedAnnotationId = nil
                             }
 
@@ -173,7 +116,7 @@ public struct AnnotationRootView: View {
                             onTextCommit: {
                                 // 防止 textDidEndEditing 与点击空白导致的重复提交
                                 if editModel.editingTextId != nil || editModel.editingCounterId != nil {
-                                    commitAllEdits()
+                                    editModel.commitAllEdits()
                                 }
                             },
 
@@ -230,7 +173,7 @@ public struct AnnotationRootView: View {
                                 activeTool: editModel.selectedTool,
                                 onUndo: editModel.undo,
                                 onRedo: editModel.redo,
-                                onDelete: deleteSelectedAnnotation,
+                                onDelete: editModel.deleteSelectedAnnotation,
                                 annotations: editModel.annotations,
                                 mapPoint: mapPoint
                             )
@@ -389,23 +332,23 @@ public struct AnnotationRootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .commitTextEdit)) { _ in
             if editModel.editingTextId != nil || editModel.editingCounterId != nil {
-                commitAllEdits()
+                editModel.commitAllEdits()
             }
         }
         .onChange(of: editModel.selectedColor) { newColor in
-            updateSelectedAnnotation(color: newColor)
+            editModel.updateSelectedAnnotation(color: newColor)
         }
         .onChange(of: editModel.selectedFontSize) { newSize in
-            updateSelectedAnnotation(fontSize: newSize)
+            editModel.updateSelectedAnnotation(fontSize: newSize)
         }
         .onChange(of: editModel.selectedLineWidth) { newSize in
-            updateSelectedAnnotation(lineWidth: newSize)
+            editModel.updateSelectedAnnotation(lineWidth: newSize)
         }
         .onChange(of: editModel.selectedTextStyle) { newStyle in
-            updateSelectedAnnotation(style: newStyle)
+            editModel.updateSelectedAnnotation(style: newStyle)
         }
         .onChange(of: editModel.selectedAnnotationId) { newId in
-            handleSelectionChange(to: newId)
+            editModel.handleSelectionChange(to: newId)
         }
         .onChange(of: isOCREditingMode) { newValue in
             // OCR 编辑态需要禁用窗口背景拖拽，否则拖扫文字会变成拖拽窗口
@@ -441,76 +384,6 @@ public struct AnnotationRootView: View {
         return circleRect.contains(point)
     }
 
-    private func hitTestAnnotation(point: CGPoint) -> (UUID, DragHandle?)? {
-        // 检查是否点中了 NumberedText 的起始点圆圈
-        if let selectedId = editModel.selectedAnnotationId,
-           let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }) {
-            let item = editModel.annotations[index]
-            if item.type == .numberedText {
-                let size = (item.fontSize ?? 16.0) * NumberedCircleConfig.renderSizeMultiplier
-                let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
-                if circleRect.contains(point) {
-                    return (selectedId, .calloutOrigin)
-                }
-            }
-        }
-        
-        // 先检查是否点中了某个控制柄（文本框控制柄）
-        if let selectedId = editModel.selectedAnnotationId,
-           let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }) {
-            let itemRect = editModel.annotations[index].rect
-            let itemType = editModel.annotations[index].type
-            let isText = itemType == .text || itemType == .numberedText || itemType == .rectText
-
-            if let handle = AnnotationGeometry.hitTestHandle(point: point, in: itemRect, cornerMinHitZone: 10, edgeHitZone: nil) {
-                if isText {
-                    let hitZoneX: CGFloat = 10.0
-                    if abs(point.x - itemRect.minX) <= hitZoneX { return (selectedId, .left) }
-                    if abs(point.x - itemRect.maxX) <= hitZoneX { return (selectedId, .right) }
-                    // 忽略其它控制柄，允许点击中心拖拽整体
-                    return (selectedId, nil)
-                } else {
-                    return (selectedId, handle)
-                }
-            }
-        }
-
-        // 检查选中的 RectText 的矩形框（优先级高于文本框，便于拖拽整体）
-        if let selectedId = editModel.selectedAnnotationId,
-           let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }),
-           let rectBounds = rectTextBounds(editModel.annotations[index]),
-           rectBounds.contains(point) {
-            return (selectedId, .calloutOrigin)
-        }
-
-        // 检查未选中的 NumberedText 的起始点圆圈
-        for item in editModel.annotations.reversed() {
-            if item.type == .numberedText {
-                let size = (item.fontSize ?? 16.0) * NumberedCircleConfig.renderSizeMultiplier
-                let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
-                if circleRect.contains(point) {
-                    return (item.id, .calloutOrigin)
-                }
-            }
-        }
-
-        // 检查未选中的 RectText 的矩形框
-        for item in editModel.annotations.reversed() {
-            if let rectBounds = rectTextBounds(item), rectBounds.contains(point) {
-                return (item.id, .calloutOrigin)
-            }
-        }
-
-        // 再检查是否点中了某个标注的包围盒（文本框或其他形状）
-        for item in editModel.annotations.reversed() {
-            if item.rect.contains(point) {
-                return (item.id, nil)
-            }
-        }
-        
-        return nil
-    }
-    
     private func handleHover(_ point: CGPoint) {
         // 用户要求统一为箭头光标，彻底解决闪烁与割裂感
         NSCursor.arrow.set()
@@ -524,10 +397,10 @@ public struct AnnotationRootView: View {
         let clickInterval = now - editModel.lastClickTime
         editModel.lastClickTime = now
         
-        if let (id, handle) = hitTestAnnotation(point: point) {
+        if let (id, handle) = editModel.hitTestAnnotation(point: point, rectTextBounds: rectTextBounds) {
             // 如果点中其他元素，先统一提交当前编辑态
             if (editModel.editingTextId != nil && editModel.editingTextId != id) || (editModel.editingCounterId != nil && editModel.editingCounterId != id) {
-                commitAllEdits()
+                editModel.commitAllEdits()
             }
 
             editModel.prepareForWrite()
@@ -556,7 +429,7 @@ public struct AnnotationRootView: View {
         editModel.lastClickAnnotationId = nil
         editModel.selectedAnnotationId = nil
         
-        commitAllEdits()
+        editModel.commitAllEdits()
         
         if editModel.selectedTool == .text || editModel.selectedTool == .numberedText {
             editModel.prepareForWrite()
@@ -729,59 +602,6 @@ public struct AnnotationRootView: View {
         }
     }
 
-    private func updateSelectedAnnotation(color: Color? = nil, fontSize: CGFloat? = nil, lineWidth: CGFloat? = nil, style: TextStyle? = nil) {
-        guard let selectedId = editModel.selectedAnnotationId,
-              let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }) else { return }
-        
-        var item = editModel.annotations[index]
-        var changed = false
-        
-        if let newColor = color, item.color != newColor {
-            item.color = newColor
-            changed = true
-        }
-        
-        if let newSize = fontSize {
-            if item.fontSize != newSize {
-                item.fontSize = newSize
-                changed = true
-            }
-        }
-        
-        if let newWidth = lineWidth {
-            if item.lineWidth != newWidth {
-                item.lineWidth = newWidth
-                changed = true
-            }
-        }
-        
-        if let newStyle = style, (item.type == .text || item.type == .numberedText || item.type == .rectText) {
-            if item.fontStyle != newStyle {
-                item.fontStyle = newStyle
-                changed = true
-            }
-        }
-        
-        if changed {
-            editModel.prepareForWrite()
-            editModel.annotations[index] = item
-        }
-    }
-    
-    private func handleSelectionChange(to newId: UUID?) {
-        guard let id = newId, let item = editModel.annotations.firstIndex(where: { $0.id == id }).map({ editModel.annotations[$0] }) else { return }
-        
-        editModel.selectedColor = item.color
-        if item.type == .text || item.type == .numberedText || item.type == .rectText || item.type == .counter || item.type == .aiMarker {
-            editModel.selectedFontSize = item.fontSize ?? 16.0
-        } else {
-            editModel.selectedLineWidth = item.lineWidth
-        }
-        if let style = item.fontStyle {
-            editModel.selectedTextStyle = style
-        }
-    }
-    
     @MainActor
     private func pinScreenshot() {
         let exportView = AnnotationCanvasLayer(
@@ -1125,7 +945,7 @@ public struct AnnotationRootView: View {
             }(),
             onUndo: editModel.undo,
             onRedo: editModel.redo,
-            onDelete: deleteSelectedAnnotation,
+            onDelete: editModel.deleteSelectedAnnotation,
             onPin: pinScreenshot,
             onOCR: { performOCR(isForTranslation: false) },
             onTranslate: { performOCR(isForTranslation: true) },

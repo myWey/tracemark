@@ -608,7 +608,7 @@ struct OverlayRootView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: geometry.size.width, height: geometry.size.height)
-                    .onTapGesture(perform: commitAllEdits)
+                    .onTapGesture(perform: editModel.commitAllEdits)
                 
                 // 2. 标注层
                 AnnotationCanvasLayer(
@@ -620,7 +620,7 @@ struct OverlayRootView: View {
                     editingTextId: editModel.editingTextId,
                     editingCounterId: editModel.editingCounterId,
                     onTextChanged: handleTextChanged,
-                    onTextCommit: commitAllEdits,
+                    onTextCommit: editModel.commitAllEdits,
                     onCounterChanged: handleCounterChanged,
                     onSizeChanged: handleSizeChanged,
                     clipRect: finalRect
@@ -747,7 +747,7 @@ struct OverlayRootView: View {
                     activeTool: editModel.selectedTool,
                     onUndo: editModel.undo,
                     onRedo: editModel.redo,
-                    onDelete: handleDelete,
+                    onDelete: editModel.deleteSelectedAnnotation,
                     annotations: editModel.annotations,
                     mapPoint: { $0 }
                 )
@@ -781,7 +781,7 @@ struct OverlayRootView: View {
                         }(),
                         onUndo: editModel.undo,
                         onRedo: editModel.redo,
-                        onDelete: handleDelete,
+                        onDelete: editModel.deleteSelectedAnnotation,
                         onPin: pinScreenshot,
                         onOCR: { exportAndClose(action: .ocr) },
                         onTranslate: { exportAndClose(action: .translate) },
@@ -847,22 +847,22 @@ struct OverlayRootView: View {
         .onChange(of: editModel.selectedTool, perform: handleSelectedToolChanged)
         .edgesIgnoringSafeArea(.all)
         .onChange(of: editModel.selectedColor) { newColor in
-            updateSelectedAnnotation(color: newColor)
+            editModel.updateSelectedAnnotation(color: newColor)
         }
         .onChange(of: editModel.selectedFontSize) { newSize in
-            updateSelectedAnnotation(fontSize: newSize)
+            editModel.updateSelectedAnnotation(fontSize: newSize)
         }
         .onChange(of: editModel.selectedLineWidth) { newSize in
-            updateSelectedAnnotation(lineWidth: newSize)
+            editModel.updateSelectedAnnotation(lineWidth: newSize)
         }
         .onChange(of: editModel.selectedBrushSize) { newSize in
-            updateSelectedAnnotation(lineWidth: newSize)
+            editModel.updateSelectedAnnotation(lineWidth: newSize)
         }
         .onChange(of: editModel.selectedTextStyle) { newStyle in
-            updateSelectedAnnotation(style: newStyle)
+            editModel.updateSelectedAnnotation(style: newStyle)
         }
         .onChange(of: editModel.selectedAnnotationId) { newId in
-            handleSelectionChange(to: newId)
+            editModel.handleSelectionChange(to: newId)
         }
         .onReceive(NotificationCenter.default.publisher(for: .annotationDoubleTapped)) { notification in
             if let id = notification.object as? UUID {
@@ -877,7 +877,7 @@ struct OverlayRootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .commitTextEdit)) { _ in
             if self.editModel.editingTextId != nil || self.editModel.editingCounterId != nil {
-                self.commitAllEdits()
+                self.editModel.commitAllEdits()
             }
         }
     }
@@ -887,76 +887,6 @@ struct OverlayRootView: View {
 
 
 
-    private func hitTestAnnotation(point: CGPoint) -> (UUID, DragHandle?)? {
-        // 检查是否点中了 NumberedText 的起始点圆圈
-        if let selectedId = editModel.selectedAnnotationId,
-           let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }) {
-            let item = editModel.annotations[index]
-            if item.type == .numberedText {
-                let size = (item.fontSize ?? 16.0) * NumberedCircleConfig.renderSizeMultiplier
-                let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
-                if circleRect.contains(point) {
-                    return (selectedId, .calloutOrigin)
-                }
-            }
-        }
-        
-        // 先检查是否点中了某个控制柄（文本框控制柄）
-        if let selectedId = editModel.selectedAnnotationId,
-           let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }) {
-            let item = editModel.annotations[index]
-            let itemRect = item.rect
-            let isText = item.type == .text || item.type == .numberedText || item.type == .rectText
-
-            if let handle = AnnotationGeometry.hitTestHandle(point: point, in: itemRect, cornerMinHitZone: 5, edgeHitZone: 20) {
-                if isText {
-                    let hitZoneX: CGFloat = 10.0
-                    if abs(point.x - itemRect.minX) <= hitZoneX { return (selectedId, .left) }
-                    if abs(point.x - itemRect.maxX) <= hitZoneX { return (selectedId, .right) }
-                    // 忽略其它控制柄，允许点击中心拖拽整体
-                    return (selectedId, nil)
-                } else {
-                    return (selectedId, handle)
-                }
-            }
-        }
-
-        // 检查选中的 RectText 的矩形框（优先级高于文本框，便于拖拽整体）
-        if let selectedId = editModel.selectedAnnotationId,
-           let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }),
-           let rectBounds = rectTextBounds(editModel.annotations[index]),
-           rectBounds.contains(point) {
-            return (selectedId, .calloutOrigin)
-        }
-
-        // 检查未选中的 NumberedText 的起始点圆圈
-        for item in editModel.annotations.reversed() {
-            if item.type == .numberedText {
-                let size = (item.fontSize ?? 16.0) * NumberedCircleConfig.renderSizeMultiplier
-                let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
-                if circleRect.contains(point) {
-                    return (item.id, .calloutOrigin)
-                }
-            }
-        }
-
-        // 检查未选中的 RectText 的矩形框
-        for item in editModel.annotations.reversed() {
-            if let rectBounds = rectTextBounds(item), rectBounds.contains(point) {
-                return (item.id, .calloutOrigin)
-            }
-        }
-
-        // 再检查是否点中了某个标注的包围盒（文本框或其他形状）
-        for item in editModel.annotations.reversed() {
-            if item.rect.contains(point) {
-                return (item.id, nil)
-            }
-        }
-        
-        return nil
-    }
-    
     private func handleHover(_ point: CGPoint) {
         if sessionState == .editing {
             let isBrush = editModel.selectedTool == .pencil || editModel.selectedTool == .highlighter || editModel.selectedTool == .blur || editModel.selectedTool == .mosaic
@@ -994,10 +924,10 @@ struct OverlayRootView: View {
             currentPoint = point
         } else {
             // 1. Check if clicking on annotation
-            if let (id, handle) = hitTestAnnotation(point: point) {
+            if let (id, handle) = editModel.hitTestAnnotation(point: point, rectTextBounds: rectTextBounds) {
                 // 如果点中其他元素，先统一提交当前编辑态
                 if (editModel.editingTextId != nil && editModel.editingTextId != id) || (editModel.editingCounterId != nil && editModel.editingCounterId != id) {
-                    commitAllEdits()
+                    editModel.commitAllEdits()
                 }
 
                 editModel.prepareForWrite()
@@ -1040,7 +970,7 @@ struct OverlayRootView: View {
             editModel.selectedAnnotationId = nil
             
             if editModel.editingTextId != nil {
-                handleTextCommit()
+                editModel.commitTextEdit()
             }
             
             if editModel.selectedTool == .text || editModel.selectedTool == .numberedText {
@@ -1371,61 +1301,7 @@ struct OverlayRootView: View {
     }
     
     // MARK: - Live Style Bindings
-    private func updateSelectedAnnotation(color: Color? = nil, fontSize: CGFloat? = nil, lineWidth: CGFloat? = nil, style: TextStyle? = nil) {
-        guard let selectedId = editModel.selectedAnnotationId,
-              let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }) else { return }
-        
-        var item = editModel.annotations[index]
-        var changed = false
-        
-        if let newColor = color, item.color != newColor {
-            item.color = newColor
-            changed = true
-        }
-        
-        if let newSize = fontSize {
-            if item.fontSize != newSize {
-                item.fontSize = newSize
-                changed = true
-            }
-        }
-        
-        if let newWidth = lineWidth {
-            if item.lineWidth != newWidth {
-                item.lineWidth = newWidth
-                changed = true
-            }
-        }
-        
-        if let newStyle = style, (item.type == .text || item.type == .numberedText || item.type == .rectText) {
-            if item.fontStyle != newStyle {
-                item.fontStyle = newStyle
-                changed = true
-            }
-        }
-        
-        if changed {
-            editModel.prepareForWrite()
-            editModel.annotations[index] = item
-        }
-    }
-    
-    private func handleSelectionChange(to newId: UUID?) {
-        guard let id = newId, let item = editModel.annotations.firstIndex(where: { $0.id == id }).map({ editModel.annotations[$0] }) else { return }
-        
-        editModel.selectedColor = item.color
-        if item.type == .text || item.type == .numberedText || item.type == .rectText || item.type == .counter {
-            editModel.selectedFontSize = item.fontSize ?? 16.0
-        } else if item.type == .highlighter || item.type == .blur || item.type == .mosaic {
-            editModel.selectedBrushSize = item.lineWidth
-        } else {
-            editModel.selectedLineWidth = item.lineWidth
-        }
-        if let style = item.fontStyle {
-            editModel.selectedTextStyle = style
-        }
-    }
-    
+
     private func offsetAnnotations(_ items: [AnnotationItem], by offset: CGPoint) -> [AnnotationItem] {
         return items.map { item in
             var newItem = item
@@ -1448,40 +1324,6 @@ struct OverlayRootView: View {
         if let index = editModel.annotations.firstIndex(where: { $0.id == id }) {
             editModel.annotations[index].customCounterString = newString
         }
-    }
-    
-    private func handleTextCommit() {
-        if let index = editModel.annotations.firstIndex(where: { $0.id == editModel.editingTextId }) {
-            let text = editModel.annotations[index].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if text.isEmpty {
-                editModel.prepareForWrite()
-                editModel.annotations.remove(at: index)
-            } else {
-                let item = editModel.annotations[index]
-                let fontSize = item.fontSize ?? 16.0
-                let singleLineHeight = fontSize * 1.2 + 16
-                if item.customWidth == nil,
-                   (item.text ?? "").contains("\n") || item.rect.height > singleLineHeight + 4 {
-                    editModel.annotations[index].customWidth = item.rect.width
-                }
-            }
-        }
-        if let currentEditingCounter = editModel.editingCounterId {
-            if let index = editModel.annotations.firstIndex(where: { $0.id == currentEditingCounter }) {
-                let newStr = editModel.annotations[index].customCounterString ?? ""
-                editModel.reorderCounters(after: currentEditingCounter, newString: newStr)
-            }
-            editModel.editingCounterId = nil
-        }
-        editModel.editingTextId = nil
-    }
-
-    /// 统一提交所有编辑态：只处理数据与排序。
-    /// 辞去第一响应者交由 AutoSizingTextView.updateNSView 在编辑态结束时安全处理，
-    /// 避免在 async 通知路径中访问已释放的 NSTextView 导致闪崩。
-    private func commitAllEdits() {
-        guard editModel.editingTextId != nil || editModel.editingCounterId != nil else { return }
-        handleTextCommit()
     }
 
     private func handleSizeChanged(id: UUID, size: CGSize) {
@@ -1508,28 +1350,6 @@ struct OverlayRootView: View {
         }
     }
 
-    private func handleDelete() {
-        if let selectedId = editModel.selectedAnnotationId {
-            editModel.prepareForWrite()
-            if let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }) {
-                let deletedItem = editModel.annotations[index]
-                editModel.annotations.remove(at: index)
-                
-                // 序号顺延逻辑 (Phase 2)
-                if deletedItem.type == .counter || deletedItem.type == .numberedText,
-                   let deletedValue = deletedItem.counterValue {
-                    for i in 0..<editModel.annotations.count {
-                        if (editModel.annotations[i].type == .counter || editModel.annotations[i].type == .numberedText),
-                           let val = editModel.annotations[i].counterValue, val > deletedValue {
-                            editModel.annotations[i].counterValue = val - 1
-                        }
-                    }
-                }
-            }
-            editModel.selectedAnnotationId = nil
-        }
-    }
-    
     private func handleCancel() {
         onCanceled()
     }

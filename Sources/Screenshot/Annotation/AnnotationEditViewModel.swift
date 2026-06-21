@@ -19,6 +19,8 @@ final class AnnotationEditViewModel: ObservableObject {
         var trustClickCount: Bool
         /// 是否为 aiMarker 同步 fontSize（AnnotationRootView=true, OverlayWindow=false）
         var syncFontSizeForAiMarker: Bool
+        /// 是否为 brush 类工具（highlighter/blur/mosaic）同步 brushSize（AnnotationRootView=false, OverlayWindow=true）
+        var syncBrushSizeForBrushTools: Bool
         /// 删空文本时是否入 undo 栈（AnnotationRootView=false, OverlayWindow=true）
         var includeEmptyTextInUndo: Bool
         /// hitTestHandle 角落命中区最小值（AnnotationRootView=10, OverlayWindow=5）
@@ -32,6 +34,7 @@ final class AnnotationEditViewModel: ObservableObject {
             doubleClickInterval: 0.5,
             trustClickCount: true,
             syncFontSizeForAiMarker: true,
+            syncBrushSizeForBrushTools: false,
             includeEmptyTextInUndo: false,
             cornerMinHitZone: 10,
             edgeHitZone: nil
@@ -43,6 +46,7 @@ final class AnnotationEditViewModel: ObservableObject {
             doubleClickInterval: 0.3,
             trustClickCount: false,
             syncFontSizeForAiMarker: false,
+            syncBrushSizeForBrushTools: true,
             includeEmptyTextInUndo: true,
             cornerMinHitZone: 5,
             edgeHitZone: 20
@@ -159,5 +163,198 @@ final class AnnotationEditViewModel: ObservableObject {
             // 非法输入：回退显示字符串，不进行任何排序变更
             annotations[index].customCounterString = nil
         }
+    }
+
+    // MARK: - hitTest
+
+    func hitTestAnnotation(point: CGPoint, rectTextBounds: (AnnotationItem) -> CGRect?) -> (UUID, DragHandle?)? {
+        // 检查是否点中了 NumberedText 的起始点圆圈
+        if let selectedId = selectedAnnotationId,
+           let index = annotations.firstIndex(where: { $0.id == selectedId }) {
+            let item = annotations[index]
+            if item.type == .numberedText {
+                let size = (item.fontSize ?? 16.0) * NumberedCircleConfig.renderSizeMultiplier
+                let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
+                if circleRect.contains(point) {
+                    return (selectedId, .calloutOrigin)
+                }
+            }
+        }
+
+        // 先检查是否点中了某个控制柄（文本框控制柄）
+        if let selectedId = selectedAnnotationId,
+           let index = annotations.firstIndex(where: { $0.id == selectedId }) {
+            let item = annotations[index]
+            let itemRect = item.rect
+            let isText = item.type == .text || item.type == .numberedText || item.type == .rectText
+
+            if let handle = AnnotationGeometry.hitTestHandle(point: point, in: itemRect, cornerMinHitZone: behavior.cornerMinHitZone, edgeHitZone: behavior.edgeHitZone) {
+                if isText {
+                    let hitZoneX: CGFloat = 10.0
+                    if abs(point.x - itemRect.minX) <= hitZoneX { return (selectedId, .left) }
+                    if abs(point.x - itemRect.maxX) <= hitZoneX { return (selectedId, .right) }
+                    // 忽略其它控制柄，允许点击中心拖拽整体
+                    return (selectedId, nil)
+                } else {
+                    return (selectedId, handle)
+                }
+            }
+        }
+
+        // 检查选中的 RectText 的矩形框（优先级高于文本框，便于拖拽整体）
+        if let selectedId = selectedAnnotationId,
+           let index = annotations.firstIndex(where: { $0.id == selectedId }),
+           let rectBounds = rectTextBounds(annotations[index]),
+           rectBounds.contains(point) {
+            return (selectedId, .calloutOrigin)
+        }
+
+        // 检查未选中的 NumberedText 的起始点圆圈
+        for item in annotations.reversed() {
+            if item.type == .numberedText {
+                let size = (item.fontSize ?? 16.0) * NumberedCircleConfig.renderSizeMultiplier
+                let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
+                if circleRect.contains(point) {
+                    return (item.id, .calloutOrigin)
+                }
+            }
+        }
+
+        // 检查未选中的 RectText 的矩形框
+        for item in annotations.reversed() {
+            if let rectBounds = rectTextBounds(item), rectBounds.contains(point) {
+                return (item.id, .calloutOrigin)
+            }
+        }
+
+        // 再检查是否点中了某个标注的包围盒（文本框或其他形状）
+        for item in annotations.reversed() {
+            if item.rect.contains(point) {
+                return (item.id, nil)
+            }
+        }
+
+        return nil
+    }
+
+    // MARK: - 选中标注更新
+
+    func updateSelectedAnnotation(color: Color? = nil, fontSize: CGFloat? = nil, lineWidth: CGFloat? = nil, style: TextStyle? = nil) {
+        guard let selectedId = selectedAnnotationId,
+              let index = annotations.firstIndex(where: { $0.id == selectedId }) else { return }
+
+        var item = annotations[index]
+        var changed = false
+
+        if let newColor = color, item.color != newColor {
+            item.color = newColor
+            changed = true
+        }
+
+        if let newSize = fontSize {
+            if item.fontSize != newSize {
+                item.fontSize = newSize
+                changed = true
+            }
+        }
+
+        if let newWidth = lineWidth {
+            if item.lineWidth != newWidth {
+                item.lineWidth = newWidth
+                changed = true
+            }
+        }
+
+        if let newStyle = style, (item.type == .text || item.type == .numberedText || item.type == .rectText) {
+            if item.fontStyle != newStyle {
+                item.fontStyle = newStyle
+                changed = true
+            }
+        }
+
+        if changed {
+            prepareForWrite()
+            annotations[index] = item
+        }
+    }
+
+    func handleSelectionChange(to newId: UUID?) {
+        guard let id = newId, let item = annotations.firstIndex(where: { $0.id == id }).map({ annotations[$0] }) else { return }
+
+        selectedColor = item.color
+        if item.type == .text || item.type == .numberedText || item.type == .rectText || item.type == .counter || (behavior.syncFontSizeForAiMarker && item.type == .aiMarker) {
+            selectedFontSize = item.fontSize ?? 16.0
+        } else if behavior.syncBrushSizeForBrushTools && (item.type == .highlighter || item.type == .blur || item.type == .mosaic) {
+            selectedBrushSize = item.lineWidth
+        } else {
+            selectedLineWidth = item.lineWidth
+        }
+        if let style = item.fontStyle {
+            selectedTextStyle = style
+        }
+    }
+
+    // MARK: - 删除
+
+    func deleteSelectedAnnotation() {
+        guard let selectedId = selectedAnnotationId,
+              let index = annotations.firstIndex(where: { $0.id == selectedId }) else { return }
+
+        prepareForWrite()
+        let deletedItem = annotations[index]
+        annotations.remove(at: index)
+
+        // 序号顺延算法 (Phase 2)
+        if (deletedItem.type == .counter || deletedItem.type == .numberedText),
+           let deletedValue = deletedItem.counterValue {
+            for i in 0..<annotations.count {
+                if (annotations[i].type == .counter || annotations[i].type == .numberedText),
+                   let val = annotations[i].counterValue, val > deletedValue {
+                    annotations[i].counterValue = val - 1
+                }
+            }
+        }
+
+        selectedAnnotationId = nil
+    }
+
+    // MARK: - 文本提交
+
+    func commitTextEdit() {
+        if let currentEditing = editingTextId {
+            if let idx = annotations.firstIndex(where: { $0.id == currentEditing }) {
+                if (annotations[idx].text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if behavior.includeEmptyTextInUndo {
+                        prepareForWrite()
+                    }
+                    annotations.remove(at: idx)
+                } else {
+                    let item = annotations[idx]
+                    let fontSize = item.fontSize ?? 16.0
+                    let singleLineHeight = fontSize * 1.2 + 16
+                    if item.customWidth == nil,
+                       (item.text ?? "").contains("\n") || item.rect.height > singleLineHeight + 4 {
+                        annotations[idx].customWidth = item.rect.width
+                    }
+                }
+            }
+        }
+        if let currentEditingCounter = editingCounterId {
+            if let idx = annotations.firstIndex(where: { $0.id == currentEditingCounter }) {
+                let newStr = annotations[idx].customCounterString ?? ""
+                reorderCounters(after: currentEditingCounter, newString: newStr)
+            }
+        }
+        editingCounterId = nil
+        editingTextId = nil
+    }
+
+    /// 点击空白处提交所有编辑态（counter / text）
+    func commitAllEdits() {
+        guard editingTextId != nil || editingCounterId != nil else { return }
+        // 先处理数据与排序；编辑态 ID 清空后，AutoSizingTextView.updateNSView
+        // 会检测到编辑态结束并安全地辞去 NSTextView 的第一响应者，
+        // 避免在 async 通知路径中直接访问可能已释放的 responder。
+        commitTextEdit()
     }
 }
