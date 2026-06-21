@@ -12,59 +12,28 @@ public struct AnnotationRootView: View {
     let originalSize: CGSize
     @State private var recordId: UUID?
     let onClose: () -> Void
-    
-    @State private var annotations: [AnnotationItem] = []
-    @State private var currentAnnotation: AnnotationItem? = nil
-    @State private var editingTextId: UUID? = nil
-    @State private var editingCounterId: UUID? = nil
+
+    @StateObject private var editModel: AnnotationEditViewModel
+
     @State private var selectedOCRBlockId: UUID? = nil
     @State private var showToast: Bool = false
     @State private var toastMessage: String = ""
-    
-    @State private var selectedTool: AnnotationToolType = .aiMarker
-    @State private var selectedColor: Color = TMDesign.Colors.red
-    
-    @State private var selectedFontSize: CGFloat = 16.0
-    @State private var selectedLineWidth: CGFloat = 4.0
-    @State private var selectedBrushSize: CGFloat = 24.0
-    @State private var selectedTextStyle: TextStyle = .standard
 
     /// 工具切换的自定义 Binding：切换工具前通过通知异步提交编辑态，
     /// 避免 closure 直接捕获 AnnotationRootView 实例方法导致闪崩。
     private var selectedToolBinding: Binding<AnnotationToolType> {
         Binding(
-            get: { selectedTool },
+            get: { editModel.selectedTool },
             set: { newTool in
-                guard newTool != selectedTool else { return }
+                guard newTool != editModel.selectedTool else { return }
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: .commitTextEdit, object: nil)
                 }
-                selectedTool = newTool
+                editModel.selectedTool = newTool
             }
         )
     }
 
-    // 标注选中与调整状态
-    @State private var selectedAnnotationId: UUID? = nil
-    @State private var annotationActiveHandle: DragHandle? = nil
-    @State private var annotationInitialItem: AnnotationItem? = nil
-    @State private var annotationDragStartPoint: CGPoint? = nil
-    
-    // 撤销/重做栈
-    @State private var undoStack: [[AnnotationItem]] = []
-    @State private var redoStack: [[AnnotationItem]] = []
-    
-    @State private var hoverPoint: CGPoint = .zero
-    @State private var isHoveringCanvas: Bool = false
-    
-    // 双击检测状态
-    @State private var lastClickTime: Double = 0
-    @State private var lastClickAnnotationId: UUID? = nil
-    
-    @State private var dragStartPos: CGPoint? = nil
-    @State private var dragStartClickCount: Int = 1
-    @State private var lastDragPoint: CGPoint? = nil
-    
     // OCR & Translation 状态
     @State private var ocrResultText: String = ""
     @State private var showOCRPanel: Bool = false
@@ -87,115 +56,71 @@ public struct AnnotationRootView: View {
         self.originalSize = displaySize
         self._recordId = State(initialValue: recordId)
         self.onClose = onClose
-        self._annotations = State(initialValue: initialAnnotations)
-        self._undoStack = State(initialValue: [])
+        self._editModel = StateObject(wrappedValue: AnnotationEditViewModel(
+            annotations: initialAnnotations,
+            behavior: .annotationConfig,
+            selectedTool: .aiMarker,
+            hoverPoint: .zero
+        ))
     }
     
     private func commitTextEdit() {
-        if let currentEditing = editingTextId {
-            if let idx = annotations.firstIndex(where: { $0.id == currentEditing }) {
-                if (annotations[idx].text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    annotations.remove(at: idx)
+        if let currentEditing = editModel.editingTextId {
+            if let idx = editModel.annotations.firstIndex(where: { $0.id == currentEditing }) {
+                if (editModel.annotations[idx].text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    editModel.annotations.remove(at: idx)
                 } else {
-                    let item = annotations[idx]
+                    let item = editModel.annotations[idx]
                     let fontSize = item.fontSize ?? 16.0
                     let singleLineHeight = fontSize * 1.2 + 16
                     if item.customWidth == nil,
                        (item.text ?? "").contains("\n") || item.rect.height > singleLineHeight + 4 {
-                        annotations[idx].customWidth = item.rect.width
+                        editModel.annotations[idx].customWidth = item.rect.width
                     }
                 }
             }
-            editingTextId = nil
+            editModel.editingTextId = nil
         }
-        if let currentEditingCounter = editingCounterId {
-            if let idx = annotations.firstIndex(where: { $0.id == currentEditingCounter }) {
-                let newStr = annotations[idx].customCounterString ?? ""
-                reorderCounters(after: currentEditingCounter, newString: newStr)
+        if let currentEditingCounter = editModel.editingCounterId {
+            if let idx = editModel.annotations.firstIndex(where: { $0.id == currentEditingCounter }) {
+                let newStr = editModel.annotations[idx].customCounterString ?? ""
+                editModel.reorderCounters(after: currentEditingCounter, newString: newStr)
             }
-            editingCounterId = nil
+            editModel.editingCounterId = nil
         }
     }
 
     /// 点击空白处提交所有编辑态（counter / text）
     private func commitAllEdits() {
-        guard editingTextId != nil || editingCounterId != nil else { return }
+        guard editModel.editingTextId != nil || editModel.editingCounterId != nil else { return }
         // 先处理数据与排序；编辑态 ID 清空后，AutoSizingTextView.updateNSView
         // 会检测到编辑态结束并安全地辞去 NSTextView 的第一响应者，
         // 避免在 async 通知路径中直接访问可能已释放的 responder。
         commitTextEdit()
     }
-    
+
     private func deleteSelectedAnnotation() {
-        guard let selectedId = selectedAnnotationId,
-              let index = annotations.firstIndex(where: { $0.id == selectedId }) else { return }
-        
-        prepareForWrite()
-        let deletedItem = annotations[index]
-        annotations.remove(at: index)
-        
+        guard let selectedId = editModel.selectedAnnotationId,
+              let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }) else { return }
+
+        editModel.prepareForWrite()
+        let deletedItem = editModel.annotations[index]
+        editModel.annotations.remove(at: index)
+
         // 序号顺延算法 (Phase 2)
         if (deletedItem.type == .counter || deletedItem.type == .numberedText),
            let deletedValue = deletedItem.counterValue {
-            for i in 0..<annotations.count {
-                if (annotations[i].type == .counter || annotations[i].type == .numberedText),
-                   let val = annotations[i].counterValue, val > deletedValue {
-                    annotations[i].counterValue = val - 1
+            for i in 0..<editModel.annotations.count {
+                if (editModel.annotations[i].type == .counter || editModel.annotations[i].type == .numberedText),
+                   let val = editModel.annotations[i].counterValue, val > deletedValue {
+                    editModel.annotations[i].counterValue = val - 1
                 }
             }
         }
-        
-        selectedAnnotationId = nil
-    }
-    
-    private func prepareForWrite() {
-        if undoStack.isEmpty || undoStack.last != annotations {
-            undoStack.append(annotations)
-            redoStack.removeAll()
-        }
-    }
-    
-    private func undo() {
-        guard !undoStack.isEmpty else { return }
-        redoStack.append(annotations)
-        annotations = undoStack.removeLast()
-    }
-    
-    private func redo() {
-        guard !redoStack.isEmpty else { return }
-        undoStack.append(annotations)
-        annotations = undoStack.removeLast()
-    }
-    
-    private func reorderCounters(after id: UUID, newString: String) {
-        guard let index = annotations.firstIndex(where: { $0.id == id }) else { return }
-        let counterIndices = annotations.enumerated().compactMap { $0.element.type == .counter || $0.element.type == .numberedText ? $0.offset : nil }
-        guard let position = counterIndices.firstIndex(of: index) else { return }
 
-        prepareForWrite()
-
-        // 仅正整数生效；超出范围时钳位到 [1, total]
-        if let newIntValue = Int(newString), newIntValue > 0 {
-            let total = counterIndices.count
-            let clampedValue = max(1, min(newIntValue, total))
-            let targetPosition = clampedValue - 1
-
-            // 按创建顺序（数组下标）取出所有 counter 的 id
-            var orderedIds = counterIndices.map { annotations[$0].id }
-            let movedId = orderedIds.remove(at: position)
-            orderedIds.insert(movedId, at: targetPosition)
-            for (newPos, cid) in orderedIds.enumerated() {
-                if let idx = annotations.firstIndex(where: { $0.id == cid }) {
-                    annotations[idx].counterValue = newPos + 1
-                    annotations[idx].customCounterString = nil
-                }
-            }
-        } else {
-            // 非法输入：回退显示字符串，不进行任何排序变更
-            annotations[index].customCounterString = nil
-        }
+        editModel.selectedAnnotationId = nil
     }
-    
+
     public var body: some View {
         let content = HStack(spacing: 0) {
             ZStack {
@@ -228,44 +153,44 @@ public struct AnnotationRootView: View {
                             .onTapGesture {
                                 // 点击空白处时先提交所有编辑态，再清空选中
                                 commitAllEdits()
-                                selectedAnnotationId = nil
+                                editModel.selectedAnnotationId = nil
                             }
-                            
+
                         // Canvas is exactly the visual size, placed at offset
                         AnnotationCanvasLayer(
                             image: image,
                             displaySize: originalSize,
-                            annotations: annotations,
-                            currentAnnotation: currentAnnotation,
-                            selectedAnnotationId: selectedAnnotationId,
-                            editingTextId: editingTextId,
-                            editingCounterId: editingCounterId,
+                            annotations: editModel.annotations,
+                            currentAnnotation: editModel.currentAnnotation,
+                            selectedAnnotationId: editModel.selectedAnnotationId,
+                            editingTextId: editModel.editingTextId,
+                            editingCounterId: editModel.editingCounterId,
                             onTextChanged: { id, newText in
-                                if let index = annotations.firstIndex(where: { $0.id == id }) {
-                                    annotations[index].text = newText
+                                if let index = editModel.annotations.firstIndex(where: { $0.id == id }) {
+                                    editModel.annotations[index].text = newText
                                 }
                             },
                             onTextCommit: {
                                 // 防止 textDidEndEditing 与点击空白导致的重复提交
-                                if editingTextId != nil || editingCounterId != nil {
+                                if editModel.editingTextId != nil || editModel.editingCounterId != nil {
                                     commitAllEdits()
                                 }
                             },
 
                             onCounterChanged: { id, str in
-                                if let index = annotations.firstIndex(where: { $0.id == id }) {
-                                    annotations[index].customCounterString = str
+                                if let index = editModel.annotations.firstIndex(where: { $0.id == id }) {
+                                    editModel.annotations[index].customCounterString = str
                                 }
                             },
                             onSizeChanged: { id, size in
                                 DispatchQueue.main.async {
-                                    if let index = annotations.firstIndex(where: { $0.id == id }) {
-                                        let item = annotations[index]
+                                    if let index = editModel.annotations.firstIndex(where: { $0.id == id }) {
+                                        let item = editModel.annotations[index]
                                         let offset = item.calloutOffset ?? (item.type == .numberedText ? CGSize(width: 16.0, height: -45.0) : .zero)
                                         let endX = item.startPoint.x + offset.width + size.width
                                         let endY = item.startPoint.y + offset.height + size.height
                                         if item.endPoint.x != endX || item.endPoint.y != endY {
-                                            annotations[index].endPoint = CGPoint(x: endX, y: endY)
+                                            editModel.annotations[index].endPoint = CGPoint(x: endX, y: endY)
                                         }
                                     }
                                 }
@@ -290,27 +215,27 @@ public struct AnnotationRootView: View {
                                     let isInside = localX >= 0 && localX <= originalSize.width && localY >= 0 && localY <= originalSize.height
                                     
                                     if isInside {
-                                        hoverPoint = pt
-                                        isHoveringCanvas = true
+                                        editModel.hoverPoint = pt
+                                        editModel.isHoveringCanvas = true
                                         handleHover(mapPoint(pt))
                                     } else {
-                                        isHoveringCanvas = false
+                                        editModel.isHoveringCanvas = false
                                         NSCursor.arrow.set()
                                     }
                                 },
                                 onHoverExited: {
-                                    isHoveringCanvas = false
+                                    editModel.isHoveringCanvas = false
                                     NSCursor.arrow.set()
                                 },
-                                activeTool: selectedTool,
-                                onUndo: undo,
-                                onRedo: redo,
+                                activeTool: editModel.selectedTool,
+                                onUndo: editModel.undo,
+                                onRedo: editModel.redo,
                                 onDelete: deleteSelectedAnnotation,
-                                annotations: annotations,
+                                annotations: editModel.annotations,
                                 mapPoint: mapPoint
                             )
                             .frame(width: containerGeo.size.width, height: containerGeo.size.height)
-                            .allowsHitTesting(editingTextId == nil && editingCounterId == nil && !isOCREditingMode)
+                            .allowsHitTesting(editModel.editingTextId == nil && editModel.editingCounterId == nil && !isOCREditingMode)
                         }
 
                         // OCR 编辑态：在图片上方叠加可选择文本层
@@ -345,11 +270,11 @@ public struct AnnotationRootView: View {
                         }
 
                         // 7. PSD-style 圆形画笔光标
-                        let isBrush = [AnnotationToolType.pencil, .highlighter, .blur, .mosaic].contains(selectedTool)
-                        if isHoveringCanvas && isBrush {
+                        let isBrush = [AnnotationToolType.pencil, .highlighter, .blur, .mosaic].contains(editModel.selectedTool)
+                        if editModel.isHoveringCanvas && isBrush {
                             BrushCursorView(
-                                selectedTool: selectedTool,
-                                selectedLineWidth: selectedLineWidth,
+                                selectedTool: editModel.selectedTool,
+                                selectedLineWidth: editModel.selectedLineWidth,
                                 scale: scale
                             )
                         }
@@ -364,12 +289,12 @@ public struct AnnotationRootView: View {
             
             
             // 隐藏的撤销重做快捷键支持
-            Button("") { undo() }
+            Button("") { editModel.undo() }
                 .keyboardShortcut("z", modifiers: .command)
                 .opacity(0)
                 .allowsHitTesting(false)
                 .frame(width: 0, height: 0)
-            Button("") { redo() }
+            Button("") { editModel.redo() }
                 .keyboardShortcut("z", modifiers: [.command, .shift])
                 .opacity(0)
                 .allowsHitTesting(false)
@@ -459,27 +384,27 @@ public struct AnnotationRootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .counterDoubleTapped)) { notification in
             if let id = notification.object as? UUID {
-                editingCounterId = id
+                editModel.editingCounterId = id
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .commitTextEdit)) { _ in
-            if editingTextId != nil || editingCounterId != nil {
+            if editModel.editingTextId != nil || editModel.editingCounterId != nil {
                 commitAllEdits()
             }
         }
-        .onChange(of: selectedColor) { newColor in
+        .onChange(of: editModel.selectedColor) { newColor in
             updateSelectedAnnotation(color: newColor)
         }
-        .onChange(of: selectedFontSize) { newSize in
+        .onChange(of: editModel.selectedFontSize) { newSize in
             updateSelectedAnnotation(fontSize: newSize)
         }
-        .onChange(of: selectedLineWidth) { newSize in
+        .onChange(of: editModel.selectedLineWidth) { newSize in
             updateSelectedAnnotation(lineWidth: newSize)
         }
-        .onChange(of: selectedTextStyle) { newStyle in
+        .onChange(of: editModel.selectedTextStyle) { newStyle in
             updateSelectedAnnotation(style: newStyle)
         }
-        .onChange(of: selectedAnnotationId) { newId in
+        .onChange(of: editModel.selectedAnnotationId) { newId in
             handleSelectionChange(to: newId)
         }
         .onChange(of: isOCREditingMode) { newValue in
@@ -518,9 +443,9 @@ public struct AnnotationRootView: View {
 
     private func hitTestAnnotation(point: CGPoint) -> (UUID, DragHandle?)? {
         // 检查是否点中了 NumberedText 的起始点圆圈
-        if let selectedId = selectedAnnotationId,
-           let index = annotations.firstIndex(where: { $0.id == selectedId }) {
-            let item = annotations[index]
+        if let selectedId = editModel.selectedAnnotationId,
+           let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }) {
+            let item = editModel.annotations[index]
             if item.type == .numberedText {
                 let size = (item.fontSize ?? 16.0) * NumberedCircleConfig.renderSizeMultiplier
                 let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
@@ -531,10 +456,10 @@ public struct AnnotationRootView: View {
         }
         
         // 先检查是否点中了某个控制柄（文本框控制柄）
-        if let selectedId = selectedAnnotationId,
-           let index = annotations.firstIndex(where: { $0.id == selectedId }) {
-            let itemRect = annotations[index].rect
-            let itemType = annotations[index].type
+        if let selectedId = editModel.selectedAnnotationId,
+           let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }) {
+            let itemRect = editModel.annotations[index].rect
+            let itemType = editModel.annotations[index].type
             let isText = itemType == .text || itemType == .numberedText || itemType == .rectText
 
             if let handle = AnnotationGeometry.hitTestHandle(point: point, in: itemRect, cornerMinHitZone: 10, edgeHitZone: nil) {
@@ -551,15 +476,15 @@ public struct AnnotationRootView: View {
         }
 
         // 检查选中的 RectText 的矩形框（优先级高于文本框，便于拖拽整体）
-        if let selectedId = selectedAnnotationId,
-           let index = annotations.firstIndex(where: { $0.id == selectedId }),
-           let rectBounds = rectTextBounds(annotations[index]),
+        if let selectedId = editModel.selectedAnnotationId,
+           let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }),
+           let rectBounds = rectTextBounds(editModel.annotations[index]),
            rectBounds.contains(point) {
             return (selectedId, .calloutOrigin)
         }
 
         // 检查未选中的 NumberedText 的起始点圆圈
-        for item in annotations.reversed() {
+        for item in editModel.annotations.reversed() {
             if item.type == .numberedText {
                 let size = (item.fontSize ?? 16.0) * NumberedCircleConfig.renderSizeMultiplier
                 let circleRect = CGRect(x: item.startPoint.x - size/2, y: item.startPoint.y - size/2, width: size, height: size)
@@ -570,14 +495,14 @@ public struct AnnotationRootView: View {
         }
 
         // 检查未选中的 RectText 的矩形框
-        for item in annotations.reversed() {
+        for item in editModel.annotations.reversed() {
             if let rectBounds = rectTextBounds(item), rectBounds.contains(point) {
                 return (item.id, .calloutOrigin)
             }
         }
 
         // 再检查是否点中了某个标注的包围盒（文本框或其他形状）
-        for item in annotations.reversed() {
+        for item in editModel.annotations.reversed() {
             if item.rect.contains(point) {
                 return (item.id, nil)
             }
@@ -592,99 +517,99 @@ public struct AnnotationRootView: View {
     }
     
     private func handleDragStart(_ point: CGPoint, clickCount: Int) {
-        dragStartClickCount = clickCount
-        dragStartPos = point
-        lastDragPoint = point
+        editModel.dragStartClickCount = clickCount
+        editModel.dragStartPos = point
+        editModel.lastDragPoint = point
         let now = ProcessInfo.processInfo.systemUptime
-        let clickInterval = now - lastClickTime
-        lastClickTime = now
+        let clickInterval = now - editModel.lastClickTime
+        editModel.lastClickTime = now
         
         if let (id, handle) = hitTestAnnotation(point: point) {
             // 如果点中其他元素，先统一提交当前编辑态
-            if (editingTextId != nil && editingTextId != id) || (editingCounterId != nil && editingCounterId != id) {
+            if (editModel.editingTextId != nil && editModel.editingTextId != id) || (editModel.editingCounterId != nil && editModel.editingCounterId != id) {
                 commitAllEdits()
             }
 
-            prepareForWrite()
-            selectedAnnotationId = id
-            annotationActiveHandle = handle
-            annotationInitialItem = annotations.first(where: { $0.id == id })
-            annotationDragStartPoint = point
+            editModel.prepareForWrite()
+            editModel.selectedAnnotationId = id
+            editModel.annotationActiveHandle = handle
+            editModel.annotationInitialItem = editModel.annotations.first(where: { $0.id == id })
+            editModel.annotationDragStartPoint = point
             
             // 双击进入编辑态：支持文本框、带序号文本、矩形框文本，以及双击序号圆圈。
-            // 条件放宽：系统 clickCount 不可靠或用户双击稍慢时，用 lastClickAnnotationId + 0.5s 兜底。
-            if clickCount >= 2 || (lastClickAnnotationId == id && clickInterval < InteractionConfig.annotationDoubleClickFallbackInterval) {
-                let item = annotations.first(where: { $0.id == id })
+            // 条件放宽：系统 clickCount 不可靠或用户双击稍慢时，用 editModel.lastClickAnnotationId + 0.5s 兜底。
+            if clickCount >= 2 || (editModel.lastClickAnnotationId == id && clickInterval < InteractionConfig.annotationDoubleClickFallbackInterval) {
+                let item = editModel.annotations.first(where: { $0.id == id })
                 // 优先判断：如果命中带序号文本的序号圆圈，进入序号编辑（即使 hitTest 返回文本框）
                 if let item = item, item.type == .numberedText, isPointInNumberedCircle(point, item: item) {
-                    editingCounterId = id
+                    editModel.editingCounterId = id
                 } else if item?.type == .text || item?.type == .numberedText || item?.type == .rectText {
-                    editingTextId = id
+                    editModel.editingTextId = id
                 } else if item?.type == .counter {
-                    editingCounterId = id
+                    editModel.editingCounterId = id
                 }
             }
-            lastClickAnnotationId = id
+            editModel.lastClickAnnotationId = id
             return
         }
         
-        lastClickAnnotationId = nil
-        selectedAnnotationId = nil
+        editModel.lastClickAnnotationId = nil
+        editModel.selectedAnnotationId = nil
         
         commitAllEdits()
         
-        if selectedTool == .text || selectedTool == .numberedText {
-            prepareForWrite()
+        if editModel.selectedTool == .text || editModel.selectedTool == .numberedText {
+            editModel.prepareForWrite()
             var cValue: Int? = nil
-            if selectedTool == .numberedText {
-                cValue = annotations.filter { $0.type == .counter || $0.type == .numberedText }.count + 1
+            if editModel.selectedTool == .numberedText {
+                cValue = editModel.annotations.filter { $0.type == .counter || $0.type == .numberedText }.count + 1
             }
-            let textItem = AnnotationItem(type: selectedTool, startPoint: point, endPoint: point, color: selectedColor, lineWidth: 2.0, text: "", fontStyle: selectedTextStyle, fontSize: selectedFontSize, counterValue: cValue)
-            annotations.append(textItem)
-            editingTextId = textItem.id
+            let textItem = AnnotationItem(type: editModel.selectedTool, startPoint: point, endPoint: point, color: editModel.selectedColor, lineWidth: 2.0, text: "", fontStyle: editModel.selectedTextStyle, fontSize: editModel.selectedFontSize, counterValue: cValue)
+            editModel.annotations.append(textItem)
+            editModel.editingTextId = textItem.id
         } else {
-            if currentAnnotation == nil {
-                prepareForWrite()
+            if editModel.currentAnnotation == nil {
+                editModel.prepareForWrite()
                 var cValue: Int? = nil
-                if selectedTool == .aiMarker {
-                    cValue = annotations.filter { $0.type == .aiMarker }.count + 1
-                } else if selectedTool == .counter || selectedTool == .numberedText {
-                    cValue = annotations.filter { $0.type == .counter || $0.type == .numberedText }.count + 1
+                if editModel.selectedTool == .aiMarker {
+                    cValue = editModel.annotations.filter { $0.type == .aiMarker }.count + 1
+                } else if editModel.selectedTool == .counter || editModel.selectedTool == .numberedText {
+                    cValue = editModel.annotations.filter { $0.type == .counter || $0.type == .numberedText }.count + 1
                 }
                 
-                let markerColor = selectedTool == .aiMarker ? TMDesign.Colors.purple.opacity(0.7) : selectedColor
-                let isThickBrush = selectedTool == .highlighter || selectedTool == .blur || selectedTool == .mosaic
-                let lw = isThickBrush ? selectedBrushSize : selectedLineWidth
-                var newAnnotation = AnnotationItem(type: selectedTool, startPoint: point, endPoint: point, color: markerColor, lineWidth: lw, fontStyle: selectedTextStyle, fontSize: selectedFontSize, counterValue: cValue)
-                if selectedTool == .rectText { newAnnotation.points = [point, point] }
+                let markerColor = editModel.selectedTool == .aiMarker ? TMDesign.Colors.purple.opacity(0.7) : editModel.selectedColor
+                let isThickBrush = editModel.selectedTool == .highlighter || editModel.selectedTool == .blur || editModel.selectedTool == .mosaic
+                let lw = isThickBrush ? editModel.selectedBrushSize : editModel.selectedLineWidth
+                var newAnnotation = AnnotationItem(type: editModel.selectedTool, startPoint: point, endPoint: point, color: markerColor, lineWidth: lw, fontStyle: editModel.selectedTextStyle, fontSize: editModel.selectedFontSize, counterValue: cValue)
+                if editModel.selectedTool == .rectText { newAnnotation.points = [point, point] }
                 if newAnnotation.isFreehandTool { newAnnotation.points = [point] }
-                currentAnnotation = newAnnotation
+                editModel.currentAnnotation = newAnnotation
             }
-            if currentAnnotation?.type == .rectText {
-                currentAnnotation?.points?[1] = point
-                currentAnnotation?.endPoint = point
-            } else if currentAnnotation?.isFreehandTool == true {
-                currentAnnotation?.points?.append(point)
-                currentAnnotation?.endPoint = point
+            if editModel.currentAnnotation?.type == .rectText {
+                editModel.currentAnnotation?.points?[1] = point
+                editModel.currentAnnotation?.endPoint = point
+            } else if editModel.currentAnnotation?.isFreehandTool == true {
+                editModel.currentAnnotation?.points?.append(point)
+                editModel.currentAnnotation?.endPoint = point
             } else {
-                currentAnnotation?.endPoint = point
+                editModel.currentAnnotation?.endPoint = point
             }
         }
     }
     
     private func handleDragChange(_ point: CGPoint) {
-        lastDragPoint = point
+        editModel.lastDragPoint = point
         let canvasBounds = CGRect(origin: .zero, size: originalSize)
-        if let selectedId = selectedAnnotationId,
-           let index = annotations.firstIndex(where: { $0.id == selectedId }),
-           let initialItem = annotationInitialItem,
-           let start = annotationDragStartPoint {
+        if let selectedId = editModel.selectedAnnotationId,
+           let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }),
+           let initialItem = editModel.annotationInitialItem,
+           let start = editModel.annotationDragStartPoint {
 
             let dx = point.x - start.x
             let dy = point.y - start.y
             var updatedItem = initialItem
 
-            if let handle = annotationActiveHandle {
+            if let handle = editModel.annotationActiveHandle {
                 if handle == .calloutOrigin {
                     updatedItem.move(by: CGSize(width: dx, height: dy))
                 } else {
@@ -712,12 +637,12 @@ public struct AnnotationRootView: View {
                     updatedItem.move(by: CGSize(width: dx, height: dy))
                 }
             }
-            annotations[index] = AnnotationGeometry.clampedAnnotation(updatedItem, to: canvasBounds)
+            editModel.annotations[index] = AnnotationGeometry.clampedAnnotation(updatedItem, to: canvasBounds)
             return
         }
 
-        if selectedTool != .text {
-            if var current = currentAnnotation, current.isFreehandTool {
+        if editModel.selectedTool != .text {
+            if var current = editModel.currentAnnotation, current.isFreehandTool {
                 var clampedPoint = point
                 if !canvasBounds.isEmpty, !canvasBounds.contains(point) {
                     clampedPoint = CGPoint(
@@ -736,79 +661,79 @@ public struct AnnotationRootView: View {
                     current.points?.append(clampedPoint)
                     current.endPoint = clampedPoint
                 }
-                currentAnnotation = current
-            } else if currentAnnotation?.type == .rectText {
-                currentAnnotation?.points?[1] = point
-                currentAnnotation?.endPoint = point
+                editModel.currentAnnotation = current
+            } else if editModel.currentAnnotation?.type == .rectText {
+                editModel.currentAnnotation?.points?[1] = point
+                editModel.currentAnnotation?.endPoint = point
             } else {
-                currentAnnotation?.endPoint = point
+                editModel.currentAnnotation?.endPoint = point
             }
         }
     }
     
     private func handleDragEnd() {
-        if let startPos = dragStartPos, let lastPos = lastDragPoint, let selectedId = selectedAnnotationId, let index = annotations.firstIndex(where: { $0.id == selectedId }) {
+        if let startPos = editModel.dragStartPos, let lastPos = editModel.lastDragPoint, let selectedId = editModel.selectedAnnotationId, let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }) {
             let dx = abs(lastPos.x - startPos.x)
             let dy = abs(lastPos.y - startPos.y)
-            let isText = annotations[index].type == .text || annotations[index].type == .numberedText || annotations[index].type == .rectText
-            let isCounter = annotations[index].type == .counter
-            if isText && dx < 5 && dy < 5 && dragStartClickCount >= 2 {
-                prepareForWrite()
-                editingTextId = selectedId
-            } else if isCounter && dx < 5 && dy < 5 && dragStartClickCount >= 2 {
-                editingCounterId = selectedId
+            let isText = editModel.annotations[index].type == .text || editModel.annotations[index].type == .numberedText || editModel.annotations[index].type == .rectText
+            let isCounter = editModel.annotations[index].type == .counter
+            if isText && dx < 5 && dy < 5 && editModel.dragStartClickCount >= 2 {
+                editModel.prepareForWrite()
+                editModel.editingTextId = selectedId
+            } else if isCounter && dx < 5 && dy < 5 && editModel.dragStartClickCount >= 2 {
+                editModel.editingCounterId = selectedId
             }
         }
-        dragStartPos = nil
-        lastDragPoint = nil
+        editModel.dragStartPos = nil
+        editModel.lastDragPoint = nil
         
-        if annotationInitialItem != nil {
-            let changed = (undoStack.last != annotations)
-            annotationInitialItem = nil
-            annotationDragStartPoint = nil
-            annotationActiveHandle = nil
-            if !changed { if !undoStack.isEmpty { _ = undoStack.removeLast() } }
+        if editModel.annotationInitialItem != nil {
+            let changed = (editModel.undoStack.last != editModel.annotations)
+            editModel.annotationInitialItem = nil
+            editModel.annotationDragStartPoint = nil
+            editModel.annotationActiveHandle = nil
+            if !changed { if !editModel.undoStack.isEmpty { _ = editModel.undoStack.removeLast() } }
             return
         }
         
-        if selectedTool != .text {
-            if let final = currentAnnotation {
+        if editModel.selectedTool != .text {
+            if let final = editModel.currentAnnotation {
                 var shouldSave = false
                 if final.isFreehandTool {
-                    if let points = final.points, points.count > 3 { annotations.append(final); shouldSave = true }
+                    if let points = final.points, points.count > 3 { editModel.annotations.append(final); shouldSave = true }
                 } else {
                     let dx = abs(final.startPoint.x - final.endPoint.x)
                     let dy = abs(final.startPoint.y - final.endPoint.y)
-                    if final.type == .counter || final.type == .aiMarker || dx > 5 || dy > 5 { annotations.append(final); shouldSave = true }
+                    if final.type == .counter || final.type == .aiMarker || dx > 5 || dy > 5 { editModel.annotations.append(final); shouldSave = true }
                 }
-                if shouldSave, final.type == .rectText, let idx = annotations.indices.last {
-                    let p0 = annotations[idx].points?[0] ?? annotations[idx].startPoint
-                    let p1 = annotations[idx].points?[1] ?? annotations[idx].endPoint
+                if shouldSave, final.type == .rectText, let idx = editModel.annotations.indices.last {
+                    let p0 = editModel.annotations[idx].points?[0] ?? editModel.annotations[idx].startPoint
+                    let p1 = editModel.annotations[idx].points?[1] ?? editModel.annotations[idx].endPoint
                     let minX = min(p0.x, p1.x)
                     let maxX = max(p0.x, p1.x)
                     let minY = min(p0.y, p1.y)
                     let maxY = max(p0.y, p1.y)
                     let rectWidth = maxX - minX
-                    annotations[idx].points = [CGPoint(x: minX, y: minY), CGPoint(x: maxX, y: maxY)]
-                    annotations[idx].startPoint = CGPoint(x: minX, y: minY)
+                    editModel.annotations[idx].points = [CGPoint(x: minX, y: minY), CGPoint(x: maxX, y: maxY)]
+                    editModel.annotations[idx].startPoint = CGPoint(x: minX, y: minY)
                     let offset = CGSize(width: rectWidth + 16, height: 0)
-                    annotations[idx].calloutOffset = offset
-                    annotations[idx].endPoint = CGPoint(x: minX + offset.width + 120, y: minY + offset.height + 30)
-                    annotations[idx].customWidth = 120
-                    selectedAnnotationId = annotations[idx].id
-                    editingTextId = annotations[idx].id
+                    editModel.annotations[idx].calloutOffset = offset
+                    editModel.annotations[idx].endPoint = CGPoint(x: minX + offset.width + 120, y: minY + offset.height + 30)
+                    editModel.annotations[idx].customWidth = 120
+                    editModel.selectedAnnotationId = editModel.annotations[idx].id
+                    editModel.editingTextId = editModel.annotations[idx].id
                 }
-                if !shouldSave { if !undoStack.isEmpty { _ = undoStack.removeLast() } }
+                if !shouldSave { if !editModel.undoStack.isEmpty { _ = editModel.undoStack.removeLast() } }
             }
-            currentAnnotation = nil
+            editModel.currentAnnotation = nil
         }
     }
 
     private func updateSelectedAnnotation(color: Color? = nil, fontSize: CGFloat? = nil, lineWidth: CGFloat? = nil, style: TextStyle? = nil) {
-        guard let selectedId = selectedAnnotationId,
-              let index = annotations.firstIndex(where: { $0.id == selectedId }) else { return }
+        guard let selectedId = editModel.selectedAnnotationId,
+              let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }) else { return }
         
-        var item = annotations[index]
+        var item = editModel.annotations[index]
         var changed = false
         
         if let newColor = color, item.color != newColor {
@@ -838,22 +763,22 @@ public struct AnnotationRootView: View {
         }
         
         if changed {
-            prepareForWrite()
-            annotations[index] = item
+            editModel.prepareForWrite()
+            editModel.annotations[index] = item
         }
     }
     
     private func handleSelectionChange(to newId: UUID?) {
-        guard let id = newId, let item = annotations.firstIndex(where: { $0.id == id }).map({ annotations[$0] }) else { return }
+        guard let id = newId, let item = editModel.annotations.firstIndex(where: { $0.id == id }).map({ editModel.annotations[$0] }) else { return }
         
-        selectedColor = item.color
+        editModel.selectedColor = item.color
         if item.type == .text || item.type == .numberedText || item.type == .rectText || item.type == .counter || item.type == .aiMarker {
-            selectedFontSize = item.fontSize ?? 16.0
+            editModel.selectedFontSize = item.fontSize ?? 16.0
         } else {
-            selectedLineWidth = item.lineWidth
+            editModel.selectedLineWidth = item.lineWidth
         }
         if let style = item.fontStyle {
-            selectedTextStyle = style
+            editModel.selectedTextStyle = style
         }
     }
     
@@ -862,7 +787,7 @@ public struct AnnotationRootView: View {
         let exportView = AnnotationCanvasLayer(
             image: image,
             displaySize: originalSize,
-            annotations: annotations,
+            annotations: editModel.annotations,
             currentAnnotation: nil
         )
         let renderer = ImageRenderer(content: exportView)
@@ -874,9 +799,9 @@ public struct AnnotationRootView: View {
            let cgImage = applyAlphaMask(from: image, to: alphaFixed) {
             PinManager.shared.pin(image: cgImage)
             if let rId = recordId {
-                HistoryManager.shared.updateRecord(id: rId, annotations: annotations, finalImage: cgImage)
+                HistoryManager.shared.updateRecord(id: rId, annotations: editModel.annotations, finalImage: cgImage)
             } else {
-                CaptureEngine.shared.saveToDisk(image: cgImage, originalImage: image, fileName: "Screenshot_Annotated", annotations: annotations)
+                CaptureEngine.shared.saveToDisk(image: cgImage, originalImage: image, fileName: "Screenshot_Annotated", annotations: editModel.annotations)
                 if let newRecordId = HistoryManager.shared.records.first?.id {
                     recordId = newRecordId
                 }
@@ -894,7 +819,7 @@ public struct AnnotationRootView: View {
             pasteboard.clearContents()
             
             var itemsToWrite: [NSPasteboardWriting] = []
-            let aiMarkers = annotations.filter { $0.type == .aiMarker }
+            let aiMarkers = editModel.annotations.filter { $0.type == .aiMarker }
             
             if !copyCoords {
                 // 仅复制原图，使用与保存一致的 PNG 编码保留 alpha
@@ -931,9 +856,9 @@ public struct AnnotationRootView: View {
             AppLogger.ui.debug("📋 [Annotation] AI \(copyCoords ? "坐标" : "原图")已复制")
             
             if let rId = recordId {
-                HistoryManager.shared.updateRecord(id: rId, annotations: annotations, finalImage: fullImageForHistory)
+                HistoryManager.shared.updateRecord(id: rId, annotations: editModel.annotations, finalImage: fullImageForHistory)
             } else {
-                CaptureEngine.shared.saveToDisk(image: fullImageForHistory, originalImage: image, fileName: "Screenshot_Annotated", annotations: annotations)
+                CaptureEngine.shared.saveToDisk(image: fullImageForHistory, originalImage: image, fileName: "Screenshot_Annotated", annotations: editModel.annotations)
                 if let newRecordId = HistoryManager.shared.records.first?.id {
                     recordId = newRecordId
                 }
@@ -990,7 +915,7 @@ public struct AnnotationRootView: View {
 
     @MainActor
     private func exportAndClose() {
-        if annotations.isEmpty && currentAnnotation == nil {
+        if editModel.annotations.isEmpty && editModel.currentAnnotation == nil {
             if let rId = recordId {
                 HistoryManager.shared.updateRecord(id: rId, annotations: [], finalImage: image)
             } else {
@@ -1017,7 +942,7 @@ public struct AnnotationRootView: View {
 
         if let cgImage = generateImageForExport(excludeAIMarkers: true) {
             if let rId = recordId {
-                HistoryManager.shared.updateRecord(id: rId, annotations: annotations, finalImage: cgImage)
+                HistoryManager.shared.updateRecord(id: rId, annotations: editModel.annotations, finalImage: cgImage)
             } else {
                 CaptureEngine.shared.saveToDisk(image: cgImage, fileName: "Screenshot_Annotated")
             }
@@ -1054,7 +979,7 @@ public struct AnnotationRootView: View {
     
     @MainActor
     private func generateImageForExport(excludeAIMarkers: Bool = true) -> CGImage? {
-        let exportAnnotations = excludeAIMarkers ? annotations.filter { $0.type != .aiMarker } : annotations
+        let exportAnnotations = excludeAIMarkers ? editModel.annotations.filter { $0.type != .aiMarker } : editModel.annotations
         let scaleFactor = CGFloat(image.width) / originalSize.width
         let hasAlpha = image.alphaInfo == .premultipliedFirst || image.alphaInfo == .premultipliedLast ||
                        image.alphaInfo == .first || image.alphaInfo == .last
@@ -1121,13 +1046,13 @@ public struct AnnotationRootView: View {
         isOCRLoading = true
 
         var targetImage: CGImage?
-        if annotations.isEmpty {
+        if editModel.annotations.isEmpty {
             targetImage = image
         } else {
             let exportView = AnnotationCanvasLayer(
                 image: image,
                 displaySize: originalSize,
-                annotations: annotations,
+                annotations: editModel.annotations,
                 currentAnnotation: nil
             )
             let renderer = ImageRenderer(content: exportView)
@@ -1186,20 +1111,20 @@ public struct AnnotationRootView: View {
     private var toolbarLayer: some View {
         UnifiedToolbarView(
             selectedTool: selectedToolBinding,
-            selectedColor: $selectedColor,
-            selectedFontSize: $selectedFontSize,
-            selectedLineWidth: $selectedLineWidth,
-            selectedBrushSize: $selectedBrushSize,
-            selectedTextStyle: $selectedTextStyle,
-            hasUndo: !undoStack.isEmpty,
-            hasRedo: !redoStack.isEmpty,
-            hasSelection: selectedAnnotationId != nil,
+            selectedColor: $editModel.selectedColor,
+            selectedFontSize: $editModel.selectedFontSize,
+            selectedLineWidth: $editModel.selectedLineWidth,
+            selectedBrushSize: $editModel.selectedBrushSize,
+            selectedTextStyle: $editModel.selectedTextStyle,
+            hasUndo: !editModel.undoStack.isEmpty,
+            hasRedo: !editModel.redoStack.isEmpty,
+            hasSelection: editModel.selectedAnnotationId != nil,
             isTextSelected: {
-                guard let type = annotations.first(where: { $0.id == selectedAnnotationId })?.type else { return false }
+                guard let type = editModel.annotations.first(where: { $0.id == editModel.selectedAnnotationId })?.type else { return false }
                 return type == .text || type == .numberedText || type == .rectText
             }(),
-            onUndo: undo,
-            onRedo: redo,
+            onUndo: editModel.undo,
+            onRedo: editModel.redo,
             onDelete: deleteSelectedAnnotation,
             onPin: pinScreenshot,
             onOCR: { performOCR(isForTranslation: false) },
@@ -1207,8 +1132,8 @@ public struct AnnotationRootView: View {
             onCancel: onClose,
             onConfirm: exportAndClose,
             onGenerateDragURL: { return generateDragURL() },
-            isEditingText: editingTextId != nil || editingCounterId != nil,
-            aiMarkerCount: annotations.filter({ $0.type == .aiMarker }).count,
+            isEditingText: editModel.editingTextId != nil || editModel.editingCounterId != nil,
+            aiMarkerCount: editModel.annotations.filter({ $0.type == .aiMarker }).count,
             onExportImage: { exportToAI(copyCoords: false) },
             onExportCoords: { exportToAI(copyCoords: true) }
         )
