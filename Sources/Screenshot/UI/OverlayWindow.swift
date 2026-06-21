@@ -914,285 +914,89 @@ struct OverlayRootView: View {
     }
     
     private func handleDragStart(_ point: CGPoint, clickCount: Int) {
-        editModel.dragStartClickCount = clickCount
-        editModel.dragStartPos = point
-        editModel.lastDragPoint = point
         if sessionState == .cropping {
             if startPoint == nil {
                 startPoint = point
             }
             currentPoint = point
-        } else {
-            // 1. Check if clicking on annotation
-            if let (id, handle) = editModel.hitTestAnnotation(point: point, rectTextBounds: rectTextBounds) {
-                // 如果点中其他元素，先统一提交当前编辑态
-                if (editModel.editingTextId != nil && editModel.editingTextId != id) || (editModel.editingCounterId != nil && editModel.editingCounterId != id) {
-                    editModel.commitAllEdits()
-                }
-
-                editModel.prepareForWrite()
-                editModel.selectedAnnotationId = id
-                editModel.annotationActiveHandle = handle
-                editModel.annotationInitialItem = editModel.annotations.first(where: { $0.id == id })
-                editModel.annotationDragStartPoint = point
-                
-                // 双击直接进编辑态（基于时间间隔，比 event.clickCount 更可靠）
-                let now = ProcessInfo.processInfo.systemUptime
-                let clickInterval = now - editModel.lastClickTime
-                if handle == nil,
-                   editModel.lastClickAnnotationId == id,
-                   clickInterval < InteractionConfig.overlayDoubleClickInterval,
-                   let index = editModel.annotations.firstIndex(where: { $0.id == id }) {
-                    let type = editModel.annotations[index].type
-                    if type == .text || type == .numberedText || type == .rectText {
-                        editModel.editingTextId = id
-                    } else if type == .counter {
-                        editModel.editingCounterId = id
-                    }
-                }
-                editModel.lastClickTime = now
-                editModel.lastClickAnnotationId = id
-                return
+            return
+        }
+        // 预先 makeKey（文本工具需要键盘焦点）
+        if editModel.selectedTool == .text || editModel.selectedTool == .numberedText {
+            if let overlayWin = NSApp.windows.first(where: { $0 is CaptureOverlayWindow && $0.isVisible }) {
+                overlayWin.makeKey()
             }
-            
-            editModel.lastClickAnnotationId = nil
-            
-            // 3. Check crop box handles (Lowest Priority)
+        }
+        let outcome = editModel.handleDragStart(point, clickCount: clickCount, rectTextBounds: rectTextBounds, isPointInNumberedCircle: nil)
+        if outcome == .hitEmpty {
+            // 检查裁剪框 handle（OW 独有）
             if let rect = finalRect, let handle = AnnotationGeometry.hitTestHandle(point: point, in: rect, cornerMinHitZone: 5, edgeHitZone: 20) {
-                // 开始调整裁剪框
                 activeHandle = handle
                 initialRectBeforeDrag = rect
                 dragStartPoint = point
                 return
             }
-            
-            // 4. Clear selection and draw new
+            // 提交编辑态（OW 独有：只检查 editingTextId）
             editModel.selectedAnnotationId = nil
-            
-            if editModel.editingTextId != nil {
-                editModel.commitTextEdit()
-            }
-            
-            if editModel.selectedTool == .text || editModel.selectedTool == .numberedText {
-                editModel.prepareForWrite()
-                if let overlayWin = NSApp.windows.first(where: { $0 is CaptureOverlayWindow && $0.isVisible }) {
-                    overlayWin.makeKey()
-                }
-                var cValue: Int? = nil
-                if editModel.selectedTool == .numberedText {
-                    let existingCount = editModel.annotations.filter { $0.type == .counter || $0.type == .numberedText }.count
-                    cValue = existingCount + 1
-                }
-                let textItem = AnnotationItem(
-                    type: editModel.selectedTool,
-                    startPoint: point,
-                    endPoint: point,
-                    color: editModel.selectedColor,
-                    lineWidth: 2.0,
-                    text: "",
-                    fontStyle: editModel.selectedTextStyle,
-                    fontSize: editModel.selectedFontSize,
-                    counterValue: cValue
-                )
-                editModel.annotations.append(textItem)
-                editModel.selectedAnnotationId = textItem.id
-                editModel.editingTextId = textItem.id
-            } else {
-                if editModel.currentAnnotation == nil {
-                    editModel.prepareForWrite()
-                    var cValue: Int? = nil
-                    if editModel.selectedTool == .counter || editModel.selectedTool == .numberedText {
-                        let existingCount = editModel.annotations.filter { $0.type == .counter || $0.type == .numberedText }.count
-                        cValue = existingCount + 1
-                    } else if editModel.selectedTool == .aiMarker {
-                        let existingCount = editModel.annotations.filter { $0.type == .aiMarker }.count
-                        cValue = existingCount + 1
-                    }
-                    
-                    var newAnnotation = AnnotationItem(
-                        type: editModel.selectedTool,
-                        startPoint: point,
-                        endPoint: point, // Fix for counter to appear immediately
-                        color: editModel.selectedColor,
-                        lineWidth: (editModel.selectedTool == .highlighter || editModel.selectedTool == .blur || editModel.selectedTool == .mosaic) ? editModel.selectedBrushSize : editModel.selectedLineWidth,
-                        fontStyle: editModel.selectedTextStyle,
-                        fontSize: editModel.selectedFontSize,
-                        counterValue: cValue
-                    )
-                    
-                    if editModel.selectedTool == .rectText {
-                        newAnnotation.points = [point, point]
-                    }
-                    if newAnnotation.isFreehandTool {
-                        newAnnotation.points = [point]
-                    }
-                    
-                    editModel.currentAnnotation = newAnnotation
-                }
-                
-                if editModel.currentAnnotation?.type == .rectText {
-                    editModel.currentAnnotation?.points?[1] = point
-                    editModel.currentAnnotation?.endPoint = point
-                } else if editModel.currentAnnotation?.isFreehandTool == true {
-                    editModel.currentAnnotation?.points?.append(point)
-                    editModel.currentAnnotation?.endPoint = point
-                } else {
-                    editModel.currentAnnotation?.endPoint = point
-                }
+            if editModel.editingTextId != nil { editModel.commitTextEdit() }
+            // 创建新标注
+            if let newId = editModel.createNewAnnotation(at: point) {
+                editModel.selectedAnnotationId = newId
             }
         }
     }
-    
+
     private func handleDragChange(_ point: CGPoint) {
-        editModel.lastDragPoint = point
         if sessionState == .cropping {
             currentPoint = point
-        } else {
-            // Editing State
-            let editBounds = finalRect
-
-            // Check if moving/resizing an annotation
-            if let selectedId = editModel.selectedAnnotationId,
-               let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }),
-               let initialItem = editModel.annotationInitialItem,
-               let start = editModel.annotationDragStartPoint {
-
-                let dx = point.x - start.x
-                let dy = point.y - start.y
-                var updatedItem = initialItem
-
-                if let handle = editModel.annotationActiveHandle {
-                    // Resize
-                    let initRect = initialItem.rect
-                    var newRect = initRect
-
-                    switch handle {
-                    case .left:
-                        newRect.origin.x = min(initRect.maxX - 5, initRect.origin.x + dx)
-                        newRect.size.width = initRect.maxX - newRect.origin.x
-                    case .right:
-                        newRect.size.width = max(5, initRect.size.width + dx)
-                    case .top:
-                        newRect.origin.y = min(initRect.maxY - 5, initRect.origin.y + dy)
-                        newRect.size.height = initRect.maxY - newRect.origin.y
-                    case .bottom:
-                        newRect.size.height = max(5, initRect.size.height + dy)
-                    case .topLeft:
-                        newRect.origin.x = min(initRect.maxX - 5, initRect.origin.x + dx)
-                        newRect.size.width = initRect.maxX - newRect.origin.x
-                        newRect.origin.y = min(initRect.maxY - 5, initRect.origin.y + dy)
-                        newRect.size.height = initRect.maxY - newRect.origin.y
-                    case .topRight:
-                        newRect.size.width = max(5, initRect.size.width + dx)
-                        newRect.origin.y = min(initRect.maxY - 5, initRect.origin.y + dy)
-                        newRect.size.height = initRect.maxY - newRect.origin.y
-                    case .bottomLeft:
-                        newRect.origin.x = min(initRect.maxX - 5, initRect.origin.x + dx)
-                        newRect.size.width = initRect.maxX - newRect.origin.x
-                        newRect.size.height = max(5, initRect.size.height + dy)
-                    case .bottomRight:
-                        newRect.size.width = max(5, initRect.size.width + dx)
-                        newRect.size.height = max(5, initRect.size.height + dy)
-                    case .calloutOrigin:
-                        updatedItem.move(by: CGSize(width: dx, height: dy))
-                        newRect = updatedItem.rect
-                    }
-
-                    updatedItem.resize(to: newRect, from: initRect)
-                } else {
-                    // Move
-                    if updatedItem.type == .numberedText || updatedItem.type == .rectText {
-                        let oldOffset = updatedItem.calloutOffset ?? (updatedItem.type == .rectText ? .zero : CGSize(width: 16.0, height: -45.0))
-                        updatedItem.calloutOffset = CGSize(width: oldOffset.width + dx, height: oldOffset.height + dy)
-                        updatedItem.endPoint = CGPoint(x: updatedItem.endPoint.x + dx, y: updatedItem.endPoint.y + dy)
-                    } else {
-                        updatedItem.move(by: CGSize(width: dx, height: dy))
-                    }
-                }
-
-                editModel.annotations[index] = AnnotationGeometry.clampedAnnotation(updatedItem, to: editBounds)
-                return
-            }
-
-            if let handle = activeHandle, let initRect = initialRectBeforeDrag, let start = dragStartPoint {
-                let dx = point.x - start.x
-                let dy = point.y - start.y
-
-                if handle == .calloutOrigin {
-                    // This is handled in the selectedId branch above usually, but just in case
-                    return
-                }
-
-                var newRect = initRect
-
-                switch handle {
-                case .left:
-                    newRect.origin.x = min(initRect.maxX - 5, initRect.origin.x + dx)
-                    newRect.size.width = initRect.maxX - newRect.origin.x
-                case .right:
-                    newRect.size.width = max(5, initRect.size.width + dx)
-                case .top:
-                    newRect.origin.y = min(initRect.maxY - 5, initRect.origin.y + dy)
-                    newRect.size.height = initRect.maxY - newRect.origin.y
-                case .bottom:
-                    newRect.size.height = max(5, initRect.size.height + dy)
-                case .topLeft:
-                    newRect.origin.x = min(initRect.maxX - 5, initRect.origin.x + dx)
-                    newRect.size.width = initRect.maxX - newRect.origin.x
-                    newRect.origin.y = min(initRect.maxY - 5, initRect.origin.y + dy)
-                    newRect.size.height = initRect.maxY - newRect.origin.y
-                case .topRight:
-                    newRect.size.width = max(5, initRect.size.width + dx)
-                    newRect.origin.y = min(initRect.maxY - 5, initRect.origin.y + dy)
-                    newRect.size.height = initRect.maxY - newRect.origin.y
-                case .bottomLeft:
-                    newRect.origin.x = min(initRect.maxX - 5, initRect.origin.x + dx)
-                    newRect.size.width = initRect.maxX - newRect.origin.x
-                    newRect.size.height = max(5, initRect.size.height + dy)
-                case .bottomRight:
-                    newRect.size.width = max(5, initRect.size.width + dx)
-                    newRect.size.height = max(5, initRect.size.height + dy)
-                case .calloutOrigin:
-                    break
-                }
-                finalRect = newRect
-                return
-            }
-
-            if editModel.selectedTool != .text {
-                if var current = editModel.currentAnnotation, current.isFreehandTool {
-                    var clampedPoint = point
-                    if let bounds = editBounds {
-                        clampedPoint = CGPoint(
-                            x: min(max(point.x, bounds.minX), bounds.maxX),
-                            y: min(max(point.y, bounds.minY), bounds.maxY)
-                        )
-                    }
-                    if current.points == nil { current.points = [] }
-                    if let lastPoint = current.points?.last {
-                        let distance = hypot(clampedPoint.x - lastPoint.x, clampedPoint.y - lastPoint.y)
-                        if distance > 3.0 { // 仅当移动超过 3px 时追加点，大幅降低 SwiftUI 重绘压力
-                            current.points?.append(clampedPoint)
-                            current.endPoint = clampedPoint
-                        }
-                    } else {
-                        current.points?.append(clampedPoint)
-                        current.endPoint = clampedPoint
-                    }
-                    editModel.currentAnnotation = current
-                } else if editModel.currentAnnotation?.type == .rectText {
-                    editModel.currentAnnotation?.points?[1] = point
-                    editModel.currentAnnotation?.endPoint = point
-                } else {
-                    editModel.currentAnnotation?.endPoint = point
-                }
-            }
+            return
         }
+        // 先检查裁剪框 handle resize（OW 独有）
+        if let handle = activeHandle, let initRect = initialRectBeforeDrag, let start = dragStartPoint {
+            let dx = point.x - start.x
+            let dy = point.y - start.y
+            if handle == .calloutOrigin { return }
+            var newRect = initRect
+            switch handle {
+            case .left:
+                newRect.origin.x = min(initRect.maxX - 5, initRect.origin.x + dx)
+                newRect.size.width = initRect.maxX - newRect.origin.x
+            case .right:
+                newRect.size.width = max(5, initRect.size.width + dx)
+            case .top:
+                newRect.origin.y = min(initRect.maxY - 5, initRect.origin.y + dy)
+                newRect.size.height = initRect.maxY - newRect.origin.y
+            case .bottom:
+                newRect.size.height = max(5, initRect.size.height + dy)
+            case .topLeft:
+                newRect.origin.x = min(initRect.maxX - 5, initRect.origin.x + dx)
+                newRect.size.width = initRect.maxX - newRect.origin.x
+                newRect.origin.y = min(initRect.maxY - 5, initRect.origin.y + dy)
+                newRect.size.height = initRect.maxY - newRect.origin.y
+            case .topRight:
+                newRect.size.width = max(5, initRect.size.width + dx)
+                newRect.origin.y = min(initRect.maxY - 5, initRect.origin.y + dy)
+                newRect.size.height = initRect.maxY - newRect.origin.y
+            case .bottomLeft:
+                newRect.origin.x = min(initRect.maxX - 5, initRect.origin.x + dx)
+                newRect.size.width = initRect.maxX - newRect.origin.x
+                newRect.size.height = max(5, initRect.size.height + dy)
+            case .bottomRight:
+                newRect.size.width = max(5, initRect.size.width + dx)
+                newRect.size.height = max(5, initRect.size.height + dy)
+            case .calloutOrigin:
+                break
+            }
+            finalRect = newRect
+            return
+        }
+        // 调用 ViewModel 处理标注拖拽
+        editModel.handleDragChange(point) { finalRect }
     }
-    
+
     private func handleDragEnd() {
         if sessionState == .cropping {
-            // 判断是否是单纯的点击且在窗口高亮内
+            // 裁剪分支（OW 独有，保留原逻辑）
             let isClick = startPoint != nil && currentPoint != nil && abs(startPoint!.x - currentPoint!.x) < 3 && abs(startPoint!.y - currentPoint!.y) < 3
             if isClick, let hoverRect = hoverWindowRect {
                 finalRect = hoverRect
@@ -1202,9 +1006,7 @@ struct OverlayRootView: View {
                 }
                 return
             }
-            
             if let rect = selectedRect, rect.width > 5 && rect.height > 5 {
-                // 进入编辑模式
                 finalRect = rect
                 sessionState = .editing
                 if let overlayWin = NSApp.windows.first(where: { $0 is CaptureOverlayWindow && $0.isVisible }) {
@@ -1214,89 +1016,15 @@ struct OverlayRootView: View {
                 startPoint = nil
                 currentPoint = nil
             }
-        } else {
-            // Editing State
-            
-            // 检测双击进入编辑（在已选中的文本上双击且无大位移）
-            if let startPos = editModel.dragStartPos,
-               let lastPos = editModel.lastDragPoint,
-               let selectedId = editModel.selectedAnnotationId,
-               let index = editModel.annotations.firstIndex(where: { $0.id == selectedId }) {
-                let dx = abs(lastPos.x - startPos.x)
-                let dy = abs(lastPos.y - startPos.y)
-                let isText = editModel.annotations[index].type == .text || editModel.annotations[index].type == .numberedText || editModel.annotations[index].type == .rectText
-                let isCounter = editModel.annotations[index].type == .counter
-                if isText && dx < 5 && dy < 5 && editModel.dragStartClickCount >= 2 {
-                    editModel.prepareForWrite()
-                    editModel.editingTextId = selectedId
-                } else if isCounter && dx < 5 && dy < 5 && editModel.dragStartClickCount >= 2 {
-                    editModel.editingCounterId = selectedId
-                }
-            }
-            editModel.dragStartPos = nil
-            editModel.lastDragPoint = nil
-            
-            // Check if we just finished moving/resizing an annotation
-            if editModel.annotationInitialItem != nil {
-                let changed = (editModel.undoStack.last != editModel.annotations)
-                editModel.annotationInitialItem = nil
-                editModel.annotationDragStartPoint = nil
-                editModel.annotationActiveHandle = nil
-                if !changed {
-                    if !editModel.undoStack.isEmpty {
-                        _ = editModel.undoStack.removeLast()
-                    }
-                }
-                return
-            }
-            
-            if activeHandle != nil {
-                activeHandle = nil
-                initialRectBeforeDrag = nil
-                dragStartPoint = nil
-                return
-            }
-            
-            if editModel.selectedTool != .text {
-                if let final = editModel.currentAnnotation {
-                    var shouldSave = false
-                    if final.isFreehandTool {
-                        if let points = final.points, points.count > 3 {
-                            editModel.annotations.append(final)
-                            shouldSave = true
-                        }
-                    } else {
-                        let dx = abs(final.startPoint.x - final.endPoint.x)
-                        let dy = abs(final.startPoint.y - final.endPoint.y)
-                        if final.type == .counter || dx > 5 || dy > 5 {
-                            editModel.annotations.append(final)
-                            shouldSave = true
-                        }
-                    }
-                    if shouldSave, final.type == .rectText, let idx = editModel.annotations.indices.last {
-                        let p0 = editModel.annotations[idx].points?[0] ?? editModel.annotations[idx].startPoint
-                        let p1 = editModel.annotations[idx].points?[1] ?? editModel.annotations[idx].endPoint
-                        let minX = min(p0.x, p1.x)
-                        let maxX = max(p0.x, p1.x)
-                        let minY = min(p0.y, p1.y)
-                        let maxY = max(p0.y, p1.y)
-                        let rectWidth = maxX - minX
-                        editModel.annotations[idx].points = [CGPoint(x: minX, y: minY), CGPoint(x: maxX, y: maxY)]
-                        editModel.annotations[idx].startPoint = CGPoint(x: minX, y: minY)
-                        let offset = CGSize(width: rectWidth + 16, height: 0)
-                        editModel.annotations[idx].calloutOffset = offset
-                        editModel.annotations[idx].endPoint = CGPoint(x: minX + offset.width + 120, y: minY + offset.height + 30)
-                        editModel.selectedAnnotationId = editModel.annotations[idx].id
-                        editModel.editingTextId = editModel.annotations[idx].id
-                    }
-                    if !shouldSave {
-                        if !editModel.undoStack.isEmpty {
-                            _ = editModel.undoStack.removeLast()
-                        }
-                    }
-                }
-                editModel.currentAnnotation = nil
-            }
+            return
+        }
+        // 调用 ViewModel 处理标注拖拽结束
+        editModel.handleDragEnd()
+        // 裁剪框 handle 清理（OW 独有）
+        if activeHandle != nil {
+            activeHandle = nil
+            initialRectBeforeDrag = nil
+            dragStartPoint = nil
         }
     }
     
