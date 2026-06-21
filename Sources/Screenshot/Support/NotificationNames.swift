@@ -13,4 +13,6 @@ extension Notification.Name {
     static let languageDidChange = Notification.Name("LanguageDidChange")
     // 工具切换
     static let selectedToolChanged = Notification.Name("SelectedToolChanged")
+    // 标注文本编辑提交（点击空白区域时触发）
+    static let commitTextEdit = Notification.Name("AnnotationCommitTextEdit")
 }

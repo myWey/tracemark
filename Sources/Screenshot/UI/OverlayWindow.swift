@@ -946,7 +946,7 @@ struct OverlayRootView: View {
                 self.editingCounterId = id
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: commitTextEditNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .commitTextEdit)) { _ in
             if self.editingTextId != nil || self.editingCounterId != nil {
                 self.commitAllEdits()
             }
@@ -954,35 +954,10 @@ struct OverlayRootView: View {
     }
     
     // MARK: - Interaction Handlers
-    
 
-    
-    private let handleHitZone: CGFloat = 20.0
-    
-    private func hitTestHandle(point: CGPoint, rect: CGRect) -> DragHandle? {
-        let hitRect = rect.insetBy(dx: -handleHitZone, dy: -handleHitZone)
-        guard hitRect.contains(point) else { return nil }
-        
-        let p = point
-        let hitZoneX = min(self.handleHitZone, max(5, rect.width / 3))
-        let hitZoneY = min(self.handleHitZone, max(5, rect.height / 3))
-        
-        let isNearX = { (val: CGFloat, target: CGFloat) in abs(val - target) <= hitZoneX }
-        let isNearY = { (val: CGFloat, target: CGFloat) in abs(val - target) <= hitZoneY }
-        let isNearXEdge = { (val: CGFloat, target: CGFloat) in abs(val - target) <= self.handleHitZone }
-        let isNearYEdge = { (val: CGFloat, target: CGFloat) in abs(val - target) <= self.handleHitZone }
-        
-        if isNearX(p.x, rect.minX) && isNearY(p.y, rect.minY) { return .topLeft }
-        if isNearX(p.x, rect.maxX) && isNearY(p.y, rect.minY) { return .topRight }
-        if isNearX(p.x, rect.minX) && isNearY(p.y, rect.maxY) { return .bottomLeft }
-        if isNearX(p.x, rect.maxX) && isNearY(p.y, rect.maxY) { return .bottomRight }
-        if isNearXEdge(p.x, rect.minX) { return .left }
-        if isNearXEdge(p.x, rect.maxX) { return .right }
-        if isNearYEdge(p.y, rect.minY) { return .top }
-        if isNearYEdge(p.y, rect.maxY) { return .bottom }
-        return nil
-    }
-    
+
+
+
     private func hitTestAnnotation(point: CGPoint) -> (UUID, DragHandle?)? {
         // 检查是否点中了 NumberedText 的起始点圆圈
         if let selectedId = selectedAnnotationId,
@@ -1004,7 +979,7 @@ struct OverlayRootView: View {
             let itemRect = item.rect
             let isText = item.type == .text || item.type == .numberedText || item.type == .rectText
 
-            if let handle = hitTestHandle(point: point, rect: itemRect) {
+            if let handle = AnnotationGeometry.hitTestHandle(point: point, in: itemRect, cornerMinHitZone: 5, edgeHitZone: 20) {
                 if isText {
                     let hitZoneX: CGFloat = 10.0
                     if abs(point.x - itemRect.minX) <= hitZoneX { return (selectedId, .left) }
@@ -1124,7 +1099,7 @@ struct OverlayRootView: View {
             lastClickAnnotationId = nil
             
             // 3. Check crop box handles (Lowest Priority)
-            if let rect = finalRect, let handle = hitTestHandle(point: point, rect: rect) {
+            if let rect = finalRect, let handle = AnnotationGeometry.hitTestHandle(point: point, in: rect, cornerMinHitZone: 5, edgeHitZone: 20) {
                 // 开始调整裁剪框
                 activeHandle = handle
                 initialRectBeforeDrag = rect
@@ -1276,7 +1251,7 @@ struct OverlayRootView: View {
                     }
                 }
 
-                annotations[index] = clampedAnnotation(updatedItem, to: editBounds)
+                annotations[index] = AnnotationGeometry.clampedAnnotation(updatedItem, to: editBounds)
                 return
             }
 
@@ -1604,23 +1579,6 @@ struct OverlayRootView: View {
         }
     }
 
-    /// 将标注整体平移，使其包围盒不超出 bounds（用于拖拽/缩放后兜底，不裁剪内容）。
-    private func clampedAnnotation(_ item: AnnotationItem, to bounds: CGRect?) -> AnnotationItem {
-        guard let bounds = bounds, bounds.width > 0, bounds.height > 0 else { return item }
-        var item = item
-        let boundingRect = item.rect
-        var dx: CGFloat = 0
-        var dy: CGFloat = 0
-        if boundingRect.minX < bounds.minX { dx = bounds.minX - boundingRect.minX }
-        if boundingRect.minY < bounds.minY { dy = bounds.minY - boundingRect.minY }
-        if boundingRect.maxX > bounds.maxX { dx = bounds.maxX - boundingRect.maxX }
-        if boundingRect.maxY > bounds.maxY { dy = bounds.maxY - boundingRect.maxY }
-        if dx != 0 || dy != 0 {
-            item.move(by: CGSize(width: dx, height: dy))
-        }
-        return item
-    }
-
     private func handleDelete() {
         if let selectedId = selectedAnnotationId {
             prepareForWrite()
@@ -1651,7 +1609,7 @@ struct OverlayRootView: View {
         NotificationCenter.default.post(name: .selectedToolChanged, object: newTool)
         // 通过通知异步提交，避免 closure 直接捕获 OverlayRootView 实例方法导致闪崩
         DispatchQueue.main.async {
-            NotificationCenter.default.post(name: commitTextEditNotification, object: nil)
+            NotificationCenter.default.post(name: .commitTextEdit, object: nil)
         }
     }
     // MARK: - Export

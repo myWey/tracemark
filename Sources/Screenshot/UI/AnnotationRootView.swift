@@ -6,10 +6,6 @@ import CoreImage.CIFilterBuiltins
 import Translation
 
 
-/// 由 AutoSizingTextView 的 Coordinator 触发的编辑提交通知，
-/// 避免在 NSTextView 回调 closure 中直接捕获 AnnotationRootView / OverlayRootView 实例导致闪崩。
-let commitTextEditNotification = Notification.Name("AnnotationCommitTextEdit")
-
 /// 标注画布视图
 public struct AnnotationRootView: View {
     let image: CGImage
@@ -41,7 +37,7 @@ public struct AnnotationRootView: View {
             set: { newTool in
                 guard newTool != selectedTool else { return }
                 DispatchQueue.main.async {
-                    NotificationCenter.default.post(name: commitTextEditNotification, object: nil)
+                    NotificationCenter.default.post(name: .commitTextEdit, object: nil)
                 }
                 selectedTool = newTool
             }
@@ -466,7 +462,7 @@ public struct AnnotationRootView: View {
                 editingCounterId = id
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: commitTextEditNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .commitTextEdit)) { _ in
             if editingTextId != nil || editingCounterId != nil {
                 commitAllEdits()
             }
@@ -512,31 +508,7 @@ public struct AnnotationRootView: View {
     }
 
 // MARK: - Interaction Handlers
-    
-    private let handleHitZone: CGFloat = 20.0
-    
-    private func hitTestHandle(point: CGPoint, rect: CGRect) -> DragHandle? {
-        let hitRect = rect.insetBy(dx: -handleHitZone, dy: -handleHitZone)
-        guard hitRect.contains(point) else { return nil }
-        
-        let p = point
-        let hitZoneX = min(self.handleHitZone, max(10, rect.width / 3.0))
-        let hitZoneY = min(self.handleHitZone, max(10, rect.height / 3.0))
-        
-        let isNearX = { (val: CGFloat, target: CGFloat) in abs(val - target) <= hitZoneX }
-        let isNearY = { (val: CGFloat, target: CGFloat) in abs(val - target) <= hitZoneY }
-        
-        if isNearX(p.x, rect.minX) && isNearY(p.y, rect.minY) { return .topLeft }
-        if isNearX(p.x, rect.maxX) && isNearY(p.y, rect.minY) { return .topRight }
-        if isNearX(p.x, rect.minX) && isNearY(p.y, rect.maxY) { return .bottomLeft }
-        if isNearX(p.x, rect.maxX) && isNearY(p.y, rect.maxY) { return .bottomRight }
-        if isNearX(p.x, rect.minX) { return .left }
-        if isNearX(p.x, rect.maxX) { return .right }
-        if isNearY(p.y, rect.minY) { return .top }
-        if isNearY(p.y, rect.maxY) { return .bottom }
-        return nil
-    }
-    
+
     private func isPointInNumberedCircle(_ point: CGPoint, item: AnnotationItem) -> Bool {
         guard item.type == .numberedText else { return false }
         let size = (item.fontSize ?? 16.0) * NumberedCircleConfig.renderSizeMultiplier
@@ -565,7 +537,7 @@ public struct AnnotationRootView: View {
             let itemType = annotations[index].type
             let isText = itemType == .text || itemType == .numberedText || itemType == .rectText
 
-            if let handle = hitTestHandle(point: point, rect: itemRect) {
+            if let handle = AnnotationGeometry.hitTestHandle(point: point, in: itemRect, cornerMinHitZone: 10, edgeHitZone: nil) {
                 if isText {
                     let hitZoneX: CGFloat = 10.0
                     if abs(point.x - itemRect.minX) <= hitZoneX { return (selectedId, .left) }
@@ -740,7 +712,7 @@ public struct AnnotationRootView: View {
                     updatedItem.move(by: CGSize(width: dx, height: dy))
                 }
             }
-            annotations[index] = clampedAnnotation(updatedItem, to: canvasBounds)
+            annotations[index] = AnnotationGeometry.clampedAnnotation(updatedItem, to: canvasBounds)
             return
         }
 
@@ -830,23 +802,6 @@ public struct AnnotationRootView: View {
             }
             currentAnnotation = nil
         }
-    }
-    
-    /// 将标注整体平移，使其包围盒不超出 bounds（用于拖拽/缩放后兜底，不裁剪内容）。
-    private func clampedAnnotation(_ item: AnnotationItem, to bounds: CGRect) -> AnnotationItem {
-        guard bounds.width > 0, bounds.height > 0 else { return item }
-        var item = item
-        let boundingRect = item.rect
-        var dx: CGFloat = 0
-        var dy: CGFloat = 0
-        if boundingRect.minX < bounds.minX { dx = bounds.minX - boundingRect.minX }
-        if boundingRect.minY < bounds.minY { dy = bounds.minY - boundingRect.minY }
-        if boundingRect.maxX > bounds.maxX { dx = bounds.maxX - boundingRect.maxX }
-        if boundingRect.maxY > bounds.maxY { dy = bounds.maxY - boundingRect.maxY }
-        if dx != 0 || dy != 0 {
-            item.move(by: CGSize(width: dx, height: dy))
-        }
-        return item
     }
 
     private func updateSelectedAnnotation(color: Color? = nil, fontSize: CGFloat? = nil, lineWidth: CGFloat? = nil, style: TextStyle? = nil) {
@@ -2347,7 +2302,7 @@ struct AutoSizingTextView: NSViewRepresentable {
                 if !textView.bounds.contains(locationInView), window.firstResponder === textView {
                     // 异步发送通知，避免在 NSEvent 处理路径内同步修改 SwiftUI 状态
                     DispatchQueue.main.async {
-                        NotificationCenter.default.post(name: commitTextEditNotification, object: nil)
+                        NotificationCenter.default.post(name: .commitTextEdit, object: nil)
                     }
                 }
                 return event
@@ -2371,7 +2326,7 @@ struct AutoSizingTextView: NSViewRepresentable {
             // 单行编辑场景（如序号编辑）按回车异步发送提交通知，由视图统一处理排序。
             if parent.commitOnReturn, commandSelector == #selector(NSResponder.insertNewline(_:)) {
                 DispatchQueue.main.async {
-                    NotificationCenter.default.post(name: commitTextEditNotification, object: nil)
+                    NotificationCenter.default.post(name: .commitTextEdit, object: nil)
                 }
                 return true
             }
@@ -2384,7 +2339,7 @@ struct AutoSizingTextView: NSViewRepresentable {
             // 通过通知机制由 AnnotationRootView 统一处理，避免 closure 捕获过期 View 实例导致闪崩。
             if textView.isEditable {
                 DispatchQueue.main.async {
-                    NotificationCenter.default.post(name: commitTextEditNotification, object: nil)
+                    NotificationCenter.default.post(name: .commitTextEdit, object: nil)
                 }
             }
         }
