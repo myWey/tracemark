@@ -409,7 +409,7 @@ struct HistoryItemView: View {
                                 .clipShape(Circle())
                         }
                         .buttonStyle(PlainButtonStyle())
-                        .help("复制截图")
+                        .help(LanguageManager.shared.localizedString(forKey: "复制截图"))
                         
                         Button(action: showInFinder) {
                             Image(systemName: "folder")
@@ -420,7 +420,7 @@ struct HistoryItemView: View {
                                 .clipShape(Circle())
                         }
                         .buttonStyle(PlainButtonStyle())
-                        .help("在 Finder 中显示")
+                        .help(LanguageManager.shared.localizedString(forKey: "在 Finder 中显示"))
                         
                         Button(action: pinRecord) {
                             Image(systemName: "pin")
@@ -431,7 +431,7 @@ struct HistoryItemView: View {
                                 .clipShape(Circle())
                         }
                         .buttonStyle(PlainButtonStyle())
-                        .help("贴图置顶")
+                        .help(LanguageManager.shared.localizedString(forKey: "钉住到屏幕"))
                         
                         Button(action: reEditRecord) {
                             Image(systemName: "pencil")
@@ -506,7 +506,7 @@ struct HistoryItemView: View {
                     }
                     .buttonStyle(PlainButtonStyle())
                     .foregroundColor(isHovering ? .red : .secondary)
-                    .help("删除")
+                    .help(LanguageManager.shared.localizedString(forKey: "删除"))
                 }
             }
         }

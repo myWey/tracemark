@@ -283,6 +283,12 @@ class TrackingNSView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
     override var isFlipped: Bool { return true }
     override var mouseDownCanMoveWindow: Bool { return false }
+
+    // 主菜单 Undo/Redo 项通过 responder chain 分发 undo:/redo: 选择器。
+    // NSResponder 默认实现调用 undoManager?.undo()，但本应用未使用 NSUndoManager，
+    // 会导致 Cmd+Z 被菜单项拦截后无操作。此处重写为转发到自定义回调。
+    @objc func undo(_ sender: Any?) { onUndo?() }
+    @objc func redo(_ sender: Any?) { onRedo?() }
     
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -333,7 +339,7 @@ class TrackingNSView: NSView {
         let modifierFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let isCmd = modifierFlags.contains(.command)
         let isShift = modifierFlags.contains(.shift)
-        
+
         if event.keyCode == 51 || event.keyCode == 117 {
             onDelete?()
             return

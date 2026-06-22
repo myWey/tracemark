@@ -113,6 +113,10 @@ final class AnnotationEditViewModel: ObservableObject {
     @Published var dragStartClickCount: Int = 1
     @Published var lastDragPoint: CGPoint? = nil
 
+    /// 拖拽开始时的 undoStack 计数，用于 handleDragEnd 取消操作时安全回退栈。
+    /// 避免 prepareForWrite() no-op 时 removeLast() 误删前序操作的有效撤销条目。
+    private var undoStackCountAtDragStart: Int = 0
+
     // MARK: - Init
 
     init(
@@ -396,6 +400,7 @@ final class AnnotationEditViewModel: ObservableObject {
         dragStartClickCount = clickCount
         dragStartPos = point
         lastDragPoint = point
+        undoStackCountAtDragStart = undoStack.count
         let now = ProcessInfo.processInfo.systemUptime
         let clickInterval = now - lastClickTime
 
@@ -604,7 +609,9 @@ final class AnnotationEditViewModel: ObservableObject {
             annotationInitialItem = nil
             annotationDragStartPoint = nil
             annotationActiveHandle = nil
-            if !changed { if !undoStack.isEmpty { _ = undoStack.removeLast() } }
+            // 仅当本次拖拽期间 prepareForWrite 确实新增了条目时才回退栈，
+            // 避免 prepareForWrite no-op 时误删前序操作的有效撤销条目。
+            if !changed { truncateUndoStack(to: undoStackCountAtDragStart) }
             return
         }
 
@@ -640,9 +647,17 @@ final class AnnotationEditViewModel: ObservableObject {
                     selectedAnnotationId = annotations[idx].id
                     editingTextId = annotations[idx].id
                 }
-                if !shouldSave { if !undoStack.isEmpty { _ = undoStack.removeLast() } }
+                if !shouldSave { truncateUndoStack(to: undoStackCountAtDragStart) }
             }
             currentAnnotation = nil
+        }
+    }
+
+    /// 安全回退 undoStack 到指定计数，仅移除本次拖拽期间新增的条目。
+    /// 替代旧的 `undoStack.removeLast()`，避免 prepareForWrite no-op 时误删前序条目。
+    private func truncateUndoStack(to count: Int) {
+        while undoStack.count > count {
+            undoStack.removeLast()
         }
     }
 }

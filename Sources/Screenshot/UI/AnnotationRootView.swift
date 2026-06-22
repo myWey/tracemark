@@ -448,81 +448,80 @@ public struct AnnotationRootView: View {
     }
     
     private func exportToAI(copyCoords: Bool) {
-        if let cleanImageForClipboard = generateImageForExport(excludeAIMarkers: true),
-           let fullImageForHistory = generateImageForExport(excludeAIMarkers: false) {
-            
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
-            
-            var itemsToWrite: [NSPasteboardWriting] = []
-            let aiMarkers = editModel.annotations.filter { $0.type == .aiMarker }
-            
-            if !copyCoords {
-                // 仅复制原图，使用与保存一致的 PNG 编码保留 alpha
-                let imageItem = NSPasteboardItem()
-                if let pngData = CaptureEngine.shared.pngData(from: cleanImageForClipboard) {
-                    imageItem.setData(pngData, forType: .png)
-                }
-                itemsToWrite.append(imageItem)
-            } else {
-                // 仅复制文本坐标
-                if !aiMarkers.isEmpty {
-                    let textItem = NSPasteboardItem()
-                    // 优先使用用户自定义话术，为空（含纯空白）则回退到 i18n 默认话术
-                    let saved = (UserDefaults.standard.string(forKey: UserDefaultsKey.aiMarkerCoordsTemplate) ?? "")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    let rawTemplate = saved.isEmpty
-                        ? LanguageManager.shared.localizedString(forKey: "aiMarker.coordsTemplate")
-                        : saved
-                    // 替换原图尺寸占位符（多模态 AI 需要原图尺寸来正确换算坐标空间）
-                    let template = rawTemplate
-                        .replacingOccurrences(of: "{width}", with: "\(image.width)")
-                        .replacingOccurrences(of: "{height}", with: "\(image.height)")
-                    var textOutput = template + "\n"
+        // 复制原图时使用原始截图（不含任何标注）；保存历史时渲染含标注的完整图
+        guard let fullImageForHistory = generateImageForExport(excludeAIMarkers: false) else { return }
 
-                    let scaleX = CGFloat(image.width) / originalSize.width
-                    let scaleY = CGFloat(image.height) / originalSize.height
-                    
-                    for marker in aiMarkers.sorted(by: { ($0.counterValue ?? 0) < ($1.counterValue ?? 0) }) {
-                        let idStr = marker.displayCounterString
-                        let rect = marker.rect
-                        let realX = Int(rect.minX * scaleX)
-                        let realY = Int(rect.minY * scaleY)
-                        let realMaxX = Int(rect.maxX * scaleX)
-                        let realMaxY = Int(rect.maxY * scaleY)
-                        let absStr = "[\(realX), \(realY), \(realMaxX), \(realMaxY)]"
-                        textOutput += "\(idStr). \(absStr)\n"
-                    }
-                    textItem.setString(textOutput, forType: .string)
-                    itemsToWrite.append(textItem)
-                }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+
+        var itemsToWrite: [NSPasteboardWriting] = []
+        let aiMarkers = editModel.annotations.filter { $0.type == .aiMarker }
+
+        if !copyCoords {
+            // 仅复制原图：使用原始截图，不包含任何标注
+            let imageItem = NSPasteboardItem()
+            if let pngData = CaptureEngine.shared.pngData(from: image) {
+                imageItem.setData(pngData, forType: .png)
             }
-            
-            pasteboard.writeObjects(itemsToWrite)
-            AppLogger.ui.debug("📋 [Annotation] AI \(copyCoords ? "坐标" : "原图")已复制")
-            
-            if let rId = recordId {
-                HistoryManager.shared.updateRecord(id: rId, annotations: editModel.annotations, finalImage: fullImageForHistory)
+            itemsToWrite.append(imageItem)
+        } else {
+            // 仅复制文本坐标
+            if !aiMarkers.isEmpty {
+                let textItem = NSPasteboardItem()
+                // 优先使用用户自定义话术，为空（含纯空白）则回退到 i18n 默认话术
+                let saved = (UserDefaults.standard.string(forKey: UserDefaultsKey.aiMarkerCoordsTemplate) ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let rawTemplate = saved.isEmpty
+                    ? LanguageManager.shared.localizedString(forKey: "aiMarker.coordsTemplate")
+                    : saved
+                // 替换原图尺寸占位符（多模态 AI 需要原图尺寸来正确换算坐标空间）
+                let template = rawTemplate
+                    .replacingOccurrences(of: "{width}", with: "\(image.width)")
+                    .replacingOccurrences(of: "{height}", with: "\(image.height)")
+                var textOutput = template + "\n"
+
+                let scaleX = CGFloat(image.width) / originalSize.width
+                let scaleY = CGFloat(image.height) / originalSize.height
+
+                for marker in aiMarkers.sorted(by: { ($0.counterValue ?? 0) < ($1.counterValue ?? 0) }) {
+                    let idStr = marker.displayCounterString
+                    let rect = marker.rect
+                    let realX = Int(rect.minX * scaleX)
+                    let realY = Int(rect.minY * scaleY)
+                    let realMaxX = Int(rect.maxX * scaleX)
+                    let realMaxY = Int(rect.maxY * scaleY)
+                    let absStr = "[\(realX), \(realY), \(realMaxX), \(realMaxY)]"
+                    textOutput += "\(idStr). \(absStr)\n"
+                }
+                textItem.setString(textOutput, forType: .string)
+                itemsToWrite.append(textItem)
+            }
+        }
+
+        pasteboard.writeObjects(itemsToWrite)
+        AppLogger.ui.debug("📋 [Annotation] AI \(copyCoords ? "坐标" : "原图")已复制")
+
+        if let rId = recordId {
+            HistoryManager.shared.updateRecord(id: rId, annotations: editModel.annotations, finalImage: fullImageForHistory)
+        } else {
+            CaptureEngine.shared.saveToDisk(image: fullImageForHistory, originalImage: image, fileName: "Screenshot_Annotated", annotations: editModel.annotations)
+            if let newRecordId = HistoryManager.shared.records.first?.id {
+                recordId = newRecordId
+            }
+        }
+
+        withAnimation(.spring()) {
+            if copyCoords {
+                toastMessage = LanguageManager.shared.localizedString(forKey: "已保存并复制 AI 定位坐标")
             } else {
-                CaptureEngine.shared.saveToDisk(image: fullImageForHistory, originalImage: image, fileName: "Screenshot_Annotated", annotations: editModel.annotations)
-                if let newRecordId = HistoryManager.shared.records.first?.id {
-                    recordId = newRecordId
-                }
+                toastMessage = LanguageManager.shared.localizedString(forKey: "已保存并复制原图")
             }
-            
+            showToast = true
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             withAnimation(.spring()) {
-                if copyCoords {
-                    toastMessage = LanguageManager.shared.localizedString(forKey: "已保存并复制 AI 定位坐标")
-                } else {
-                    toastMessage = LanguageManager.shared.localizedString(forKey: "已保存并复制原图")
-                }
-                showToast = true
-            }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                withAnimation(.spring()) {
-                    showToast = false
-                }
+                showToast = false
             }
         }
     }

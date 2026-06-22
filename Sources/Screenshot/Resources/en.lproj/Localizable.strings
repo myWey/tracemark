@@ -17,6 +17,7 @@
 "箭头" = "Arrow";
 "文字" = "Text";
 "序号文字" = "Numbered Text";
+"矩形框文本" = "Rectangle Text";
 "计数器" = "Counter";
 "画笔" = "Pencil";
 "荧光笔" = "Highlighter";
@@ -92,3 +93,7 @@
 "进入标注与涂抹" = "Annotate & Edit";
 "复制到剪贴板" = "Copy to Clipboard";
 "保存到下载" = "Save to Downloads";
+"复制截图" = "Copy Screenshot";
+"在 Finder 中显示" = "Show in Finder";
+"重新编辑标注" = "Re-edit Annotation";
+"删除" = "Delete";
