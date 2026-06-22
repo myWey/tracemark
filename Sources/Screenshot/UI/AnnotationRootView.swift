@@ -385,8 +385,12 @@ public struct AnnotationRootView: View {
     }
 
     private func handleHover(_ point: CGPoint) {
-        // 用户要求统一为箭头光标，彻底解决闪烁与割裂感
-        NSCursor.arrow.set()
+        let isBrush = editModel.selectedTool == .pencil || editModel.selectedTool == .highlighter || editModel.selectedTool == .blur || editModel.selectedTool == .mosaic
+        if isBrush {
+            NSCursor.transparent.set()
+        } else {
+            NSCursor.crosshair.set()
+        }
     }
     
     private func handleDragStart(_ point: CGPoint, clickCount: Int) {

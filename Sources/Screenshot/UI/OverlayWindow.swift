@@ -293,7 +293,7 @@ class TrackingNSView: NSView {
         if isBrush {
             self.addCursorRect(self.bounds, cursor: NSCursor.transparent)
         } else {
-            self.addCursorRect(self.bounds, cursor: NSCursor.arrow)
+            self.addCursorRect(self.bounds, cursor: NSCursor.crosshair)
         }
     }
     
@@ -892,7 +892,7 @@ struct OverlayRootView: View {
             if isBrush && finalRect?.contains(point) == true {
                 NSCursor.transparent.set()
             } else {
-                NSCursor.arrow.set()
+                NSCursor.crosshair.set()
             }
         } else {
             // sessionState == .cropping
