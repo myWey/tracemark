@@ -781,7 +781,6 @@ struct OverlayRootView: View {
                         }(),
                         onUndo: editModel.undo,
                         onRedo: editModel.redo,
-                        onDelete: editModel.deleteSelectedAnnotation,
                         onPin: pinScreenshot,
                         onOCR: { exportAndClose(action: .ocr) },
                         onTranslate: { exportAndClose(action: .translate) },
@@ -1377,7 +1376,6 @@ struct UnifiedToolbarView: View {
     var isTextSelected: Bool
     let onUndo: () -> Void
     let onRedo: () -> Void
-    let onDelete: () -> Void
     let onPin: () -> Void
     let onOCR: () -> Void
     let onTranslate: () -> Void
@@ -1557,19 +1555,6 @@ struct UnifiedToolbarView: View {
                             tooltipKey: "钉住到屏幕",
                             action: onPin
                         )
-
-                        // Delete
-                        if hasSelection && !isEditingText && !isTextSelected {
-                            IconButtonWithTooltip(
-                                icon: "trash.fill",
-                                tooltipKey: "删除选中标注 (Delete)",
-                                action: onDelete,
-                                iconSize: 12,
-                                foregroundColor: .white,
-                                backgroundColor: Color.red.opacity(0.85)
-                            )
-                            .transition(.scale.combined(with: .opacity))
-                        }
 
                         Text("|").foregroundColor(.gray.opacity(0.4)).padding(.horizontal, 2)
 

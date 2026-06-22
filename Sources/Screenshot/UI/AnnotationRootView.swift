@@ -749,7 +749,6 @@ public struct AnnotationRootView: View {
             }(),
             onUndo: editModel.undo,
             onRedo: editModel.redo,
-            onDelete: editModel.deleteSelectedAnnotation,
             onPin: pinScreenshot,
             onOCR: { performOCR(isForTranslation: false) },
             onTranslate: { performOCR(isForTranslation: true) },
