@@ -141,6 +141,16 @@ final class AnnotationEditViewModel: ObservableObject {
     }
 
     func undo() {
+        // 绘制进行中时 Cmd+Z 应取消当前绘制，而非撤销前一个已提交状态。
+        // 否则绘制结束后 currentAnnotation 被追加到 annotations，用户误以为已撤销却无法撤销。
+        if currentAnnotation != nil {
+            currentAnnotation = nil
+            dragStartPos = nil
+            lastDragPoint = nil
+            // 回退拖拽开始时入栈的条目（prepareForWrite 在 createNewAnnotation 中调用）
+            truncateUndoStack(to: undoStackCountAtDragStart)
+            return
+        }
         guard !undoStack.isEmpty else { return }
         redoStack.append(annotations)
         annotations = undoStack.removeLast()
@@ -473,7 +483,9 @@ final class AnnotationEditViewModel: ObservableObject {
                 let markerColor = behavior.usePurpleForAiMarker && selectedTool == .aiMarker ? TMDesign.Colors.purple.opacity(0.7) : selectedColor
                 let isThickBrush = selectedTool == .highlighter || selectedTool == .blur || selectedTool == .mosaic
                 let lw = isThickBrush ? selectedBrushSize : selectedLineWidth
-                var newAnnotation = AnnotationItem(type: selectedTool, startPoint: point, endPoint: point, color: markerColor, lineWidth: lw, fontStyle: selectedTextStyle, fontSize: selectedFontSize, counterValue: cValue)
+                // rectText 默认使用圆角实心背景样式，不受全局 selectedTextStyle 影响
+                let effectiveStyle: TextStyle = selectedTool == .rectText ? .roundedBoxed : selectedTextStyle
+                var newAnnotation = AnnotationItem(type: selectedTool, startPoint: point, endPoint: point, color: markerColor, lineWidth: lw, fontStyle: effectiveStyle, fontSize: selectedFontSize, counterValue: cValue)
                 if selectedTool == .rectText { newAnnotation.points = [point, point] }
                 if newAnnotation.isFreehandTool { newAnnotation.points = [point] }
                 currentAnnotation = newAnnotation

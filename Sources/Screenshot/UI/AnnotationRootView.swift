@@ -1464,7 +1464,7 @@ struct AnnotationShapeView: View {
                                         .multilineTextAlignment(.leading)
                                         .frame(width: item.customWidth != nil
                                             ? max(item.customWidth! - 12 - textPadding * 2, 10)
-                                            : (item.type == .rectText ? max(finalMaxWidth - 12 - textPadding * 2, 10) : nil), alignment: .leading))
+                                            : nil, alignment: .leading))
                                 }
                             }
                             .shadow(color: fontStyle == .outlined && !isEditing ? item.color : .clear, radius: 1, x: 1, y: 1)
@@ -1472,7 +1472,7 @@ struct AnnotationShapeView: View {
                             .padding(.horizontal, 6)
                             .padding(.vertical, 8)
                             .padding(textPadding)
-                            .fixedSize(horizontal: item.customWidth == nil && item.type != .rectText, vertical: true)
+                            .fixedSize(horizontal: item.customWidth == nil, vertical: true)
                             .allowsHitTesting(isEditing)
                         }
                     }
@@ -1834,7 +1834,7 @@ struct AutoSizingTextView: NSViewRepresentable {
         } else {
             context.coordinator.removeOutsideClickMonitor()
         }
-        if nsView.string != text {
+        if nsView.string != text && !nsView.hasMarkedText() {
             nsView.string = text
             nsView.invalidateIntrinsicContentSize()
         }
