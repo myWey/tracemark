@@ -11,7 +11,10 @@ class AnnotationWindow: NSPanel {
 public class AnnotationManager {
     public static let shared = AnnotationManager()
     private var window: NSPanel?
-    
+
+    /// 当前标注窗口是否可见（供 HistoryWindow 关闭时判断是否应恢复 .accessory）
+    public var isVisible: Bool { window != nil }
+
     private init() {
         // 监听进入标注的通知
         NotificationCenter.default.addObserver(
@@ -48,24 +51,27 @@ public class AnnotationManager {
             }
         }
     }
-    
+
     /// 拉起居中的标注画布窗口
     public func showAnnotationCanvas(for image: CGImage, initialAnnotations: [AnnotationItem] = [], recordId: UUID? = nil) {
         // 防御性清理
         window?.orderOut(nil)
-        
+
+        // 切换为 .regular 以确保 IME 文本输入正常工作（.accessory 模式下输入法会闪烁/丢字）
+        NSApp.setActivationPolicy(.regular)
+
         let screen = NSScreen.main ?? NSScreen.screens.first!
         let screenFrame = screen.visibleFrame
         let scaleFactor = screen.backingScaleFactor
-        
+
         // 计算图片在屏幕上的最佳展示尺寸（留出一定边距）
         let imageWidth = CGFloat(image.width) / scaleFactor
         let imageHeight = CGFloat(image.height) / scaleFactor
-        
+
         // 加上工具栏所需的额外高度 (预留 120pt 给多行工具栏和边距)，且宽度不小于工具栏最低要求宽度
         let windowWidth = max(imageWidth, 850)
         let windowHeight = imageHeight + 120
-        
+
         let x = screenFrame.midX - windowWidth / 2
         let y = screenFrame.midY - windowHeight / 2
         let rect = CGRect(x: x, y: y, width: windowWidth, height: windowHeight)
@@ -78,49 +84,53 @@ public class AnnotationManager {
                 self?.close()
             }
         ))
-        
+
         let panel = AnnotationWindow(
             contentRect: rect,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        
+
         let titleKey = recordId != nil ? "历史标注再编辑" : "标注与编辑"
         panel.title = LanguageManager.shared.localizedString(forKey: titleKey)
         panel.contentViewController = controller
         panel.isFloatingPanel = false
         panel.level = NSWindow.Level.normal
         panel.isMovableByWindowBackground = true
-        
+
         // 强制尺寸
         controller.view.frame = NSRect(origin: .zero, size: rect.size)
         panel.setContentSize(rect.size)
         panel.setFrame(rect, display: true)
-        
+
         // 激活动画
         panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil as Any?)
         NSApp.activate(ignoringOtherApps: true)
-        
+
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.25
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().alphaValue = 1.0
         }
-        
+
         self.window = panel
     }
-    
+
     public func close() {
         guard let panel = window else { return }
-        
+
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.2
             panel.animator().alphaValue = 0
         }, completionHandler: {
             panel.orderOut(nil)
             self.window = nil
+            // 仅当 History 窗口也不可见时才恢复 .accessory，避免影响其他窗口的文本输入
+            if HistoryWindowController.shared.window?.isVisible != true {
+                NSApp.setActivationPolicy(.accessory)
+            }
         })
     }
 }

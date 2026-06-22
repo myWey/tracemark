@@ -35,6 +35,9 @@ public class HistoryWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - NSWindowDelegate
     
     public func windowWillClose(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        // 仅当标注窗口也不可见时才恢复 .accessory，避免影响标注窗口的 IME 文本输入
+        if !AnnotationManager.shared.isVisible {
+            NSApp.setActivationPolicy(.accessory)
+        }
     }
 }
