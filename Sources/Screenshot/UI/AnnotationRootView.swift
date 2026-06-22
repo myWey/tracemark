@@ -153,6 +153,8 @@ public struct AnnotationRootView: View {
                                 onDragEnd: handleDragEnd,
                                 onCancel: onClose,
                                 onHover: { pt in
+                                    // 文本编辑态时让 NSTextView 自行管理光标，避免干扰输入法
+                                    if editModel.editingTextId != nil || editModel.editingCounterId != nil { return }
                                     let localX = (pt.x - offsetX) / scale
                                     let localY = (pt.y - offsetY) / scale
                                     let isInside = localX >= 0 && localX <= originalSize.width && localY >= 0 && localY <= originalSize.height
@@ -168,7 +170,9 @@ public struct AnnotationRootView: View {
                                 },
                                 onHoverExited: {
                                     editModel.isHoveringCanvas = false
-                                    NSCursor.arrow.set()
+                                    if editModel.editingTextId == nil && editModel.editingCounterId == nil {
+                                        NSCursor.arrow.set()
+                                    }
                                 },
                                 activeTool: editModel.selectedTool,
                                 onUndo: editModel.undo,
@@ -218,8 +222,10 @@ public struct AnnotationRootView: View {
                             BrushCursorView(
                                 selectedTool: editModel.selectedTool,
                                 selectedLineWidth: editModel.selectedLineWidth,
+                                selectedBrushSize: editModel.selectedBrushSize,
                                 scale: scale
                             )
+                            .position(x: editModel.hoverPoint.x, y: editModel.hoverPoint.y)
                         }
                     }
                     .frame(width: containerGeo.size.width, height: containerGeo.size.height)
@@ -385,9 +391,11 @@ public struct AnnotationRootView: View {
     }
 
     private func handleHover(_ point: CGPoint) {
+        // 文本编辑态时让 NSTextView 自行管理 I-beam 光标，避免强制设置光标干扰输入法
+        if editModel.editingTextId != nil || editModel.editingCounterId != nil { return }
         let isBrush = editModel.selectedTool == .pencil || editModel.selectedTool == .highlighter || editModel.selectedTool == .blur || editModel.selectedTool == .mosaic
         if isBrush {
-            NSCursor.transparent.set()
+            brushCursor.set()
         } else {
             NSCursor.crosshair.set()
         }
@@ -460,8 +468,17 @@ public struct AnnotationRootView: View {
                 // 仅复制文本坐标
                 if !aiMarkers.isEmpty {
                     let textItem = NSPasteboardItem()
-                    var textOutput = LanguageManager.shared.localizedString(forKey: "以下是在原图上圈出的目标元素坐标 [xmin, ymin, xmax, ymax]，请逐一根据坐标和关联的要求修改：") + "\n"
-                    
+                    // 优先使用用户自定义话术，为空则回退到 i18n 默认话术
+                    let saved = UserDefaults.standard.string(forKey: UserDefaultsKey.aiMarkerCoordsTemplate) ?? ""
+                    let rawTemplate = saved.isEmpty
+                        ? LanguageManager.shared.localizedString(forKey: "aiMarker.coordsTemplate")
+                        : saved
+                    // 替换原图尺寸占位符（多模态 AI 需要原图尺寸来正确换算坐标空间）
+                    let template = rawTemplate
+                        .replacingOccurrences(of: "{width}", with: "\(image.width)")
+                        .replacingOccurrences(of: "{height}", with: "\(image.height)")
+                    var textOutput = template + "\n"
+
                     let scaleX = CGFloat(image.width) / originalSize.width
                     let scaleY = CGFloat(image.height) / originalSize.height
                     
@@ -961,7 +978,12 @@ func rectTextBounds(_ item: AnnotationItem) -> CGRect? {
 /// 用逐块平均色算法生成马赛克（与微信截图专利 CN105787874B 一致）。
 /// 对每个 blockSize×blockSize 区域计算 RGB 平均值，用平均色填充整个块。
 /// 使用原图 colorSpace，避免 premultipliedLast/First 不兼容导致颜色错误。
-func createMosaicCGImage(_ image: CGImage, blockSize: Int = 8) -> CGImage? {
+///
+/// 优化：采样区域随机偏移（jitter）。输出网格仍保持对齐（无重叠无间隙），
+/// 但每个块的平均色采样自略微偏移的区域，打破相邻块颜色与原图梯度的
+/// 严格对应关系，避免涂抹后仍能从颜色梯度分辨出原轮廓。
+/// 种子基于图像尺寸，保证同一张图每次结果相同（缓存有效）。
+func createMosaicCGImage(_ image: CGImage, blockSize: Int = 16) -> CGImage? {
     let w = image.width
     let h = image.height
     guard w > 0, h > 0, blockSize > 0 else { return nil }
@@ -978,22 +1000,46 @@ func createMosaicCGImage(_ image: CGImage, blockSize: Int = 8) -> CGImage? {
 
     guard let dataPtr = context.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
 
+    // 复制原始数据用于采样，避免抖动后采样到已修改的像素
+    let totalBytes = bytesPerRow * h
+    let originalData = UnsafeMutableBufferPointer<UInt8>.allocate(capacity: totalBytes)
+    defer { originalData.deallocate() }
+    memcpy(originalData.baseAddress, dataPtr, totalBytes)
+
+    // 确定性 xorshift 随机数：种子基于图像尺寸，保证同一张图每次结果相同
+    var seed: UInt64 = (UInt64(w) << 32) ^ UInt64(h) ^ 0x9E3779B97F4A7C15
+    func nextRand() -> UInt64 {
+        seed ^= seed << 13
+        seed ^= seed >> 7
+        seed ^= seed << 17
+        return seed
+    }
+
+    // 抖动幅度：blockSize/4，足够打破均匀性，又不会让块颜色完全失真
+    let jitterMax = UInt64(max(1, blockSize / 4))
+
     // 逐块计算平均色并填充（专利权利要求 4：average-color-per-block）
     for blockY in stride(from: 0, to: h, by: blockSize) {
         for blockX in stride(from: 0, to: w, by: blockSize) {
             let bw = min(blockSize, w - blockX)
             let bh = min(blockSize, h - blockY)
 
+            // 采样区域随机偏移（clamped 到图像边界内，确保不越界）
+            let jitterX = Int(nextRand() % jitterMax)
+            let jitterY = Int(nextRand() % jitterMax)
+            let sampleX = min(max(0, blockX + jitterX), max(0, w - bw))
+            let sampleY = min(max(0, blockY + jitterY), max(0, h - bh))
+
             var r: Int = 0, g: Int = 0, b: Int = 0, a: Int = 0, count: Int = 0
 
             for py in 0..<bh {
                 for px in 0..<bw {
-                    let idx = ((blockY + py) * w + (blockX + px)) * 4
+                    let idx = ((sampleY + py) * w + (sampleX + px)) * 4
                     // premultipliedFirst + byteOrder32Little: [BGRA] in memory
-                    b += Int(dataPtr[idx])
-                    g += Int(dataPtr[idx + 1])
-                    r += Int(dataPtr[idx + 2])
-                    a += Int(dataPtr[idx + 3])
+                    b += Int(originalData[idx])
+                    g += Int(originalData[idx + 1])
+                    r += Int(originalData[idx + 2])
+                    a += Int(originalData[idx + 3])
                     count += 1
                 }
             }
@@ -1003,7 +1049,7 @@ func createMosaicCGImage(_ image: CGImage, blockSize: Int = 8) -> CGImage? {
             let avgR = UInt8(r / count)
             let avgA = UInt8(a / count)
 
-            // 用平均色填充整个块
+            // 用平均色填充整个输出块（保持网格对齐，无重叠无间隙）
             for py in 0..<bh {
                 for px in 0..<bw {
                     let idx = ((blockY + py) * w + (blockX + px)) * 4
@@ -1810,7 +1856,6 @@ struct AutoSizingTextView: NSViewRepresentable {
         if let cw = customWidth {
             nsView.isHorizontallyResizable = false
             nsView.textContainer?.widthTracksTextView = true
-            // Account for padding by providing exact container size if needed, but we do padding in SwiftUI.
             nsView.textContainer?.containerSize = NSSize(width: cw, height: CGFloat.greatestFiniteMagnitude)
             nsView.frame.size.width = cw
         } else {
@@ -1963,14 +2008,14 @@ class AutoResizingNSTextView: NSTextView {
 struct BrushCursorView: View {
     let selectedTool: AnnotationToolType
     let selectedLineWidth: CGFloat
+    let selectedBrushSize: CGFloat
     let scale: CGFloat
-    
+
     var brushSize: CGFloat {
-        let lw = max(1.0, selectedLineWidth / 4.0)
-        let baseSize: CGFloat = (selectedTool == .pencil) ? lw : max(20.0, lw * 2.0)
-        return baseSize * scale
+        let baseSize: CGFloat = (selectedTool == .pencil) ? selectedLineWidth : selectedBrushSize
+        return max(2.0, baseSize * scale)
     }
-    
+
     var body: some View {
         ZStack {
             Circle()

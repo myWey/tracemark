@@ -51,6 +51,10 @@
 "完成并保存" = "保存して終了";
 "给 AI 定位" = "AIに位置を通知";
 "请先添加 AI 定位标记" = "AI位置マーカーを追加してください";
+"aiMarker.coordsTemplate" = "以下は原图上の注目領域の座標です（順序付き番号）。座標系：左上原点(0,0)、x右方向、y下方向。[xmin, ymin, xmax, ymax] は絶対ピクセル（正規化なし）、原图 {width}×{height} ピクセル。座標と画像内容を組み合わせて各領域を定位し、後続の指示に従って変更してください：";
+"aiMarker.coordsTemplateSettingTitle" = "AI位置コピーテンプレート";
+"aiMarker.coordsTemplateSettingDesc" = "「AIに位置を通知 - 座標コピー」の出力テンプレートをカスタマイズ。プレースホルダー: {width}、{height}（原图ピクセルサイズ）。[xmin, ymin, xmax, ymax] は座標形式の説明なので、保持することを推奨します。";
+"恢复默认" = "デフォルトに戻す";
 
 "OCR_Recognized_Text" = "認識されたテキスト";
 "OCR_No_Results" = "認識結果がありません";

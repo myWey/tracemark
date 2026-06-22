@@ -67,6 +67,10 @@
 "完成并保存" = "完成并保存";
 "给 AI 定位" = "给 AI 定位";
 "请先添加 AI 定位标记" = "请先添加 AI 定位标记";
+"aiMarker.coordsTemplate" = "以下是原图上需关注区域的坐标（按顺序编号）。坐标系：左上角原点(0,0)，x向右，y向下。[xmin, ymin, xmax, ymax] 为绝对像素（非归一化），原图 {width}×{height} 像素。请结合坐标和图像内容定位各区域，并按后续指令修改：";
+"aiMarker.coordsTemplateSettingTitle" = "AI 定位复制话术";
+"aiMarker.coordsTemplateSettingDesc" = "自定义「给 AI 定位 - 复制坐标」输出的话术。可用占位符：{width}、{height}（原图像素尺寸）。[xmin, ymin, xmax, ymax] 为坐标格式说明，建议保留。";
+"恢复默认" = "恢复默认";
 
 "OCR_Recognized_Text" = "识别文字";
 "OCR_No_Results" = "暂无识别结果";

@@ -69,6 +69,10 @@
 "完成并保存" = "Save & Exit";
 "给 AI 定位" = "AI Positioning";
 "请先添加 AI 定位标记" = "Please add AI positioning markers first";
+"aiMarker.coordsTemplate" = "The following are coordinates of regions of interest on the original image (numbered in order). Coordinate system: origin (0,0) at top-left, x rightward, y downward. [xmin, ymin, xmax, ymax] in absolute pixels (NOT normalized). Original image: {width}×{height} pixels. Please locate each region by combining coordinates with image content, then modify according to subsequent instructions:";
+"aiMarker.coordsTemplateSettingTitle" = "AI Positioning Copy Template";
+"aiMarker.coordsTemplateSettingDesc" = "Customize the template for 'AI Positioning - Copy Coordinates'. Placeholders: {width}, {height} (original image pixel dimensions). [xmin, ymin, xmax, ymax] is the coordinate format description, recommended to keep.";
+"恢复默认" = "Reset to Default";
 
 "OCR_Recognized_Text" = "Recognized Text";
 "OCR_No_Results" = "No recognized text";

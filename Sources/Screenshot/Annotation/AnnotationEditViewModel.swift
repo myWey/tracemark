@@ -7,6 +7,16 @@ import CoreGraphics
 @MainActor
 final class AnnotationEditViewModel: ObservableObject {
 
+    // MARK: - 性能配置
+
+    /// 笔触点采样最小距离阈值：小于此距离的点被丢弃，降低 SwiftUI 重绘频率
+    /// Intel 核显用更大阈值（5.0）减少重绘压力；Apple Silicon 用 3.0 保持笔触精度
+    #if arch(x86_64)
+    static let brushDistanceThreshold: CGFloat = 5.0
+    #else
+    static let brushDistanceThreshold: CGFloat = 3.0
+    #endif
+
     // MARK: - 行为配置
 
     /// 两个视图的行为差异配置
@@ -336,7 +346,7 @@ final class AnnotationEditViewModel: ObservableObject {
                     let item = annotations[idx]
                     let fontSize = item.fontSize ?? 16.0
                     let singleLineHeight = fontSize * 1.2 + 16
-                    if item.customWidth == nil,
+                    if item.type != .rectText, item.customWidth == nil,
                        (item.text ?? "").contains("\n") || item.rect.height > singleLineHeight + 4 {
                         annotations[idx].customWidth = item.rect.width
                     }
@@ -538,7 +548,7 @@ final class AnnotationEditViewModel: ObservableObject {
                 if current.points == nil { current.points = [] }
                 if let lastPoint = current.points?.last {
                     let distance = hypot(clampedPoint.x - lastPoint.x, clampedPoint.y - lastPoint.y)
-                    if distance > 3.0 {
+                    if distance > Self.brushDistanceThreshold {
                         current.points?.append(clampedPoint)
                         current.endPoint = clampedPoint
                     }
@@ -612,7 +622,7 @@ final class AnnotationEditViewModel: ObservableObject {
                     let offset = CGSize(width: rectWidth + 16, height: 0)
                     annotations[idx].calloutOffset = offset
                     annotations[idx].endPoint = CGPoint(x: minX + offset.width + 120, y: minY + offset.height + 30)
-                    annotations[idx].customWidth = 120
+                    // 不设置 customWidth：rectText 文本框自动扩展到截图选区边缘，与正常文本框行为一致
                     selectedAnnotationId = annotations[idx].id
                     editingTextId = annotations[idx].id
                 }

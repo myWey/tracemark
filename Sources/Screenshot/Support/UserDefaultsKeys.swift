@@ -11,4 +11,6 @@ enum UserDefaultsKey {
     static let captureShortcut = "captureShortcut"
     // 语言选择
     static let appLanguageSelection = "AppLanguageSelection"
+    // AI 定位复制坐标话术（为空时使用 i18n 默认话术）
+    static let aiMarkerCoordsTemplate = "AiMarkerCoordsTemplate"
 }
