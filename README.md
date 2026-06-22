@@ -6,18 +6,28 @@ TraceMark is an efficient, lightweight, system-level screenshot and annotation t
 
 ## ✨ Core Features
 
-- **Recommended Features**:
-  - 💬 **Numbered Text (Callouts)**: Automatically incrementing numbers with freely draggable callout text boxes, making step-by-step instructions clear and highly readable.
-  - **History Dashboard**: Supports re-editing of historical screenshots and annotations, avoiding the need to retake screenshots for minor detail tweaks. Historical screenshots can also be pinned to the desktop for easy reference.
-  - **OCR (Optical Character Recognition)**: Extract text from screenshots instantly.
-  - **Translation**: One-click translation (macOS 14.4 and above only).
-  - Multi-language support (i18n): Natively supports English, Chinese, Japanese, and Korean interfaces.
+### 1. More Elegant Annotation
 
-- **Rich Annotation Tools**:
-  - 🖌️ **Brush & Highlight**: Freehand drawing and text highlighting.
-  - 📏 **Shapes**: Standardized shapes including rectangles, ellipses, and arrows.
-  - 💧 **Mosaic & Blur**: Essential tools for protecting privacy and sensitive data.
-  - **Global Shortcut**: Customizable global shortcut to instantly freeze the screen.
+- **💬 Numbered Text (Callouts)**: Auto-incrementing numbers with draggable callout text boxes make step-by-step instructions clear, readable, and perfect for design reviews and product feedback.
+- **📝 Rectangle Frame Text**: Bordered, transparent-fill text callouts frame and explain specific areas without cluttering the screenshot.
+- **🪟 Window Auto-Snap**: Automatically detects window boundaries when capturing, filtering out excess background edges for cleaner output.
+- **🎨 Refined Color System**: Built on macOS semantic colors with a unified purple AI accent, keeping both the UI and exported screenshots professionally polished.
+
+### 2. Smart Tools
+
+- **🤖 AI Positioning**: Mark key areas on a screenshot and one-click export the original image + normalized coordinates `[xmin, ymin, xmax, ymax]` as a prompt, so AI can pinpoint exactly where to act.
+- **🔍 OCR**: Instantly extract text from screenshots; copy plain text or full info with pixel coordinates.
+- **🌐 One-Click Translation**: Quickly translate captured text (macOS 14.4 and above).
+
+### 3. Efficient Screenshot Management
+
+- **🗂️ History Archive**: Screenshots and annotations are automatically archived and re-editable, so you never need to retake a shot for small tweaks.
+- **📌 Pin to Top**: Pin screenshots as topmost floating windows; support multiple pins and free scaling for easy side-by-side reference.
+
+### General Capabilities
+
+- **Global Shortcut**: One customizable keystroke to freeze the screen and capture across multiple displays.
+- **Multi-language Support (i18n)**: Native interfaces in English, Chinese, Japanese, and Korean.
 
 ## 📥 Installation Guide
 
