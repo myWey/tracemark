@@ -468,8 +468,9 @@ public struct AnnotationRootView: View {
                 // 仅复制文本坐标
                 if !aiMarkers.isEmpty {
                     let textItem = NSPasteboardItem()
-                    // 优先使用用户自定义话术，为空则回退到 i18n 默认话术
-                    let saved = UserDefaults.standard.string(forKey: UserDefaultsKey.aiMarkerCoordsTemplate) ?? ""
+                    // 优先使用用户自定义话术，为空（含纯空白）则回退到 i18n 默认话术
+                    let saved = (UserDefaults.standard.string(forKey: UserDefaultsKey.aiMarkerCoordsTemplate) ?? "")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
                     let rawTemplate = saved.isEmpty
                         ? LanguageManager.shared.localizedString(forKey: "aiMarker.coordsTemplate")
                         : saved
@@ -1462,7 +1463,9 @@ struct AnnotationShapeView: View {
                                         .foregroundColor(textColor)
                                         .lineLimit(nil)
                                         .multilineTextAlignment(.leading)
-                                        .frame(width: item.customWidth != nil ? max(item.customWidth! - 12 - textPadding * 2, 10) : nil, alignment: .leading))
+                                        .frame(width: item.customWidth != nil
+                                            ? max(item.customWidth! - 12 - textPadding * 2, 10)
+                                            : (item.type == .rectText ? max(finalMaxWidth - 12 - textPadding * 2, 10) : nil), alignment: .leading))
                                 }
                             }
                             .shadow(color: fontStyle == .outlined && !isEditing ? item.color : .clear, radius: 1, x: 1, y: 1)
@@ -1470,7 +1473,7 @@ struct AnnotationShapeView: View {
                             .padding(.horizontal, 6)
                             .padding(.vertical, 8)
                             .padding(textPadding)
-                            .fixedSize(horizontal: item.customWidth == nil, vertical: true)
+                            .fixedSize(horizontal: item.customWidth == nil && item.type != .rectText, vertical: true)
                             .allowsHitTesting(isEditing)
                         }
                     }

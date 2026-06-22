@@ -20,7 +20,9 @@ public struct PreferencesView: View {
                     : coordsTemplateRaw
             },
             set: { newValue in
-                coordsTemplateRaw = newValue
+                // 纯空白视为空，回退到 i18n 默认话术
+                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                coordsTemplateRaw = trimmed
             }
         )
     }

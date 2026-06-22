@@ -558,10 +558,24 @@ final class AnnotationEditViewModel: ObservableObject {
                 }
                 currentAnnotation = current
             } else if currentAnnotation?.type == .rectText {
-                currentAnnotation?.points?[1] = point
-                currentAnnotation?.endPoint = point
+                var clampedPoint = point
+                if let bounds = canvasBounds, !bounds.isEmpty, !bounds.contains(point) {
+                    clampedPoint = CGPoint(
+                        x: min(max(point.x, bounds.minX), bounds.maxX),
+                        y: min(max(point.y, bounds.minY), bounds.maxY)
+                    )
+                }
+                currentAnnotation?.points?[1] = clampedPoint
+                currentAnnotation?.endPoint = clampedPoint
             } else {
-                currentAnnotation?.endPoint = point
+                var clampedPoint = point
+                if let bounds = canvasBounds, !bounds.isEmpty, !bounds.contains(point) {
+                    clampedPoint = CGPoint(
+                        x: min(max(point.x, bounds.minX), bounds.maxX),
+                        y: min(max(point.y, bounds.minY), bounds.maxY)
+                    )
+                }
+                currentAnnotation?.endPoint = clampedPoint
             }
         }
     }

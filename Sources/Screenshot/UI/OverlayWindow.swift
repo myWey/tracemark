@@ -1229,8 +1229,9 @@ struct OverlayRootView: View {
         }
 
         if copyCoords && !aiMarkers.isEmpty {
-            // 优先使用用户自定义话术，为空则回退到 i18n 默认话术
-            let saved = UserDefaults.standard.string(forKey: UserDefaultsKey.aiMarkerCoordsTemplate) ?? ""
+            // 优先使用用户自定义话术，为空（含纯空白）则回退到 i18n 默认话术
+            let saved = (UserDefaults.standard.string(forKey: UserDefaultsKey.aiMarkerCoordsTemplate) ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             let rawTemplate = saved.isEmpty
                 ? LanguageManager.shared.localizedString(forKey: "aiMarker.coordsTemplate")
                 : saved
