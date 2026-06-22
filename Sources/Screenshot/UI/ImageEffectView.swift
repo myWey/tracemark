@@ -5,7 +5,8 @@ import CoreImage.CIFilterBuiltins
 /// 模糊/马赛克效果的共享参数，确保实时绘制与导出一致
 enum EffectConfig {
     static let blurRadius = 8.0
-    static let mosaicBlockSize = 8
+    /// 马赛克块大小：16 比 8 更能模糊细节，避免涂抹后仍能分辨原轮廓
+    static let mosaicBlockSize = 16
 }
 
 /// 同步将 blur/mosaic 画笔效果绘制到 CGImage 上。

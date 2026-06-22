@@ -7,6 +7,16 @@ import CoreGraphics
 @MainActor
 final class AnnotationEditViewModel: ObservableObject {
 
+    // MARK: - 性能配置
+
+    /// 笔触点采样最小距离阈值：小于此距离的点被丢弃，降低 SwiftUI 重绘频率
+    /// Intel 核显用更大阈值（5.0）减少重绘压力；Apple Silicon 用 3.0 保持笔触精度
+    #if arch(x86_64)
+    static let brushDistanceThreshold: CGFloat = 5.0
+    #else
+    static let brushDistanceThreshold: CGFloat = 3.0
+    #endif
+
     // MARK: - 行为配置
 
     /// 两个视图的行为差异配置
@@ -102,6 +112,10 @@ final class AnnotationEditViewModel: ObservableObject {
     @Published var dragStartPos: CGPoint? = nil
     @Published var dragStartClickCount: Int = 1
     @Published var lastDragPoint: CGPoint? = nil
+
+    /// 拖拽开始时的 undoStack 计数，用于 handleDragEnd 取消操作时安全回退栈。
+    /// 避免 prepareForWrite() no-op 时 removeLast() 误删前序操作的有效撤销条目。
+    private var undoStackCountAtDragStart: Int = 0
 
     // MARK: - Init
 
@@ -336,7 +350,7 @@ final class AnnotationEditViewModel: ObservableObject {
                     let item = annotations[idx]
                     let fontSize = item.fontSize ?? 16.0
                     let singleLineHeight = fontSize * 1.2 + 16
-                    if item.customWidth == nil,
+                    if item.type != .rectText, item.customWidth == nil,
                        (item.text ?? "").contains("\n") || item.rect.height > singleLineHeight + 4 {
                         annotations[idx].customWidth = item.rect.width
                     }
@@ -386,6 +400,7 @@ final class AnnotationEditViewModel: ObservableObject {
         dragStartClickCount = clickCount
         dragStartPos = point
         lastDragPoint = point
+        undoStackCountAtDragStart = undoStack.count
         let now = ProcessInfo.processInfo.systemUptime
         let clickInterval = now - lastClickTime
 
@@ -538,7 +553,7 @@ final class AnnotationEditViewModel: ObservableObject {
                 if current.points == nil { current.points = [] }
                 if let lastPoint = current.points?.last {
                     let distance = hypot(clampedPoint.x - lastPoint.x, clampedPoint.y - lastPoint.y)
-                    if distance > 3.0 {
+                    if distance > Self.brushDistanceThreshold {
                         current.points?.append(clampedPoint)
                         current.endPoint = clampedPoint
                     }
@@ -548,10 +563,24 @@ final class AnnotationEditViewModel: ObservableObject {
                 }
                 currentAnnotation = current
             } else if currentAnnotation?.type == .rectText {
-                currentAnnotation?.points?[1] = point
-                currentAnnotation?.endPoint = point
+                var clampedPoint = point
+                if let bounds = canvasBounds, !bounds.isEmpty, !bounds.contains(point) {
+                    clampedPoint = CGPoint(
+                        x: min(max(point.x, bounds.minX), bounds.maxX),
+                        y: min(max(point.y, bounds.minY), bounds.maxY)
+                    )
+                }
+                currentAnnotation?.points?[1] = clampedPoint
+                currentAnnotation?.endPoint = clampedPoint
             } else {
-                currentAnnotation?.endPoint = point
+                var clampedPoint = point
+                if let bounds = canvasBounds, !bounds.isEmpty, !bounds.contains(point) {
+                    clampedPoint = CGPoint(
+                        x: min(max(point.x, bounds.minX), bounds.maxX),
+                        y: min(max(point.y, bounds.minY), bounds.maxY)
+                    )
+                }
+                currentAnnotation?.endPoint = clampedPoint
             }
         }
     }
@@ -580,7 +609,9 @@ final class AnnotationEditViewModel: ObservableObject {
             annotationInitialItem = nil
             annotationDragStartPoint = nil
             annotationActiveHandle = nil
-            if !changed { if !undoStack.isEmpty { _ = undoStack.removeLast() } }
+            // 仅当本次拖拽期间 prepareForWrite 确实新增了条目时才回退栈，
+            // 避免 prepareForWrite no-op 时误删前序操作的有效撤销条目。
+            if !changed { truncateUndoStack(to: undoStackCountAtDragStart) }
             return
         }
 
@@ -612,13 +643,21 @@ final class AnnotationEditViewModel: ObservableObject {
                     let offset = CGSize(width: rectWidth + 16, height: 0)
                     annotations[idx].calloutOffset = offset
                     annotations[idx].endPoint = CGPoint(x: minX + offset.width + 120, y: minY + offset.height + 30)
-                    annotations[idx].customWidth = 120
+                    // 不设置 customWidth：rectText 文本框自动扩展到截图选区边缘，与正常文本框行为一致
                     selectedAnnotationId = annotations[idx].id
                     editingTextId = annotations[idx].id
                 }
-                if !shouldSave { if !undoStack.isEmpty { _ = undoStack.removeLast() } }
+                if !shouldSave { truncateUndoStack(to: undoStackCountAtDragStart) }
             }
             currentAnnotation = nil
+        }
+    }
+
+    /// 安全回退 undoStack 到指定计数，仅移除本次拖拽期间新增的条目。
+    /// 替代旧的 `undoStack.removeLast()`，避免 prepareForWrite no-op 时误删前序条目。
+    private func truncateUndoStack(to count: Int) {
+        while undoStack.count > count {
+            undoStack.removeLast()
         }
     }
 }

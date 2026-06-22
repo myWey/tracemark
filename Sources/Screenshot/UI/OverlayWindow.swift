@@ -72,77 +72,81 @@ func ensurePremultipliedAlpha(for image: CGImage) -> CGImage? {
     return ctx.makeImage()
 }
 
-/// 仅对图像边缘区域做 alpha 阈值清理：alpha 低于阈值的像素强制设为全透明。
-/// 用于清除窗口截图圆角及四边残留的半透明白色像素，避免复制到微信等外部应用时显示白边。
-func thresholdAlphaEdge(for image: CGImage, edgeWidth: Int = 20, threshold: UInt8 = 32) -> CGImage? {
-    let width = image.width
-    let height = image.height
-    guard width > 0, height > 0 else { return nil }
+/// 采样图像四边中点（避开圆角区域）的平均颜色，用于填充透明圆角外区域。
+/// 解决微信等聊天应用不支持 PNG alpha 通道预览、强制填充白色/黑色的问题。
+func sampleEdgeColor(from image: CGImage) -> CGColor {
+    let w = image.width
+    let h = image.height
+    let margin = max(20, min(w, h) / 4)
 
-    let bytesPerPixel = 4
-    let bytesPerRow = width * bytesPerPixel
-    var pixels = [UInt8](repeating: 0, count: height * bytesPerRow)
+    // 采样点：四边中点，避开圆角区域
+    let samplePoints = [
+        CGPoint(x: w / 2, y: margin),
+        CGPoint(x: w / 2, y: h - margin),
+        CGPoint(x: margin, y: h / 2),
+        CGPoint(x: w - margin, y: h / 2),
+    ]
 
-    guard let space = image.colorSpace else { return nil }
-    let bitmapInfo = image.bitmapInfo.rawValue
-    guard let ctx = CGContext(
-        data: &pixels,
-        width: width,
-        height: height,
-        bitsPerComponent: 8,
-        bytesPerRow: bytesPerRow,
-        space: space,
-        bitmapInfo: bitmapInfo
-    ) else { return nil }
-
-    let rect = CGRect(x: 0, y: 0, width: width, height: height)
-    ctx.draw(image, in: rect)
-
-    // 根据 alpha 位置确定偏移（premultipliedFirst/Last + byteOrder）
-    let alphaInfo = image.alphaInfo
-    let isLittleEndian = (bitmapInfo & CGBitmapInfo.byteOrderMask.rawValue) == CGBitmapInfo.byteOrder32Little.rawValue
-    let alphaOffset: Int
-    switch alphaInfo {
-    case .premultipliedFirst, .first, .noneSkipFirst:
-        alphaOffset = isLittleEndian ? 3 : 0
-    case .premultipliedLast, .last, .noneSkipLast:
-        alphaOffset = isLittleEndian ? 0 : 3
-    default:
-        return nil
+    guard let provider = image.dataProvider,
+          let dataPtr = CFDataGetBytePtr(provider.data) else {
+        return CGColor(red: 1, green: 1, blue: 1, alpha: 1)
     }
 
-    let edge = min(edgeWidth, min(width, height) / 2)
-    guard edge > 0 else { return ctx.makeImage() }
+    let bytesPerRow = image.bytesPerRow
+    var totalR: CGFloat = 0, totalG: CGFloat = 0, totalB: CGFloat = 0
+    var count: CGFloat = 0
 
-    for y in 0..<height {
-        let isTopEdge = y < edge
-        let isBottomEdge = y >= height - edge
-        for x in 0..<width {
-            let isLeftEdge = x < edge
-            let isRightEdge = x >= width - edge
-            guard isTopEdge || isBottomEdge || isLeftEdge || isRightEdge else { continue }
-
-            let pixelOffset = y * bytesPerRow + x * bytesPerPixel
-            if pixels[pixelOffset + alphaOffset] < threshold {
-                pixels[pixelOffset] = 0
-                pixels[pixelOffset + 1] = 0
-                pixels[pixelOffset + 2] = 0
-                pixels[pixelOffset + 3] = 0
-            }
+    for point in samplePoints {
+        let px = min(max(0, Int(point.x)), w - 1)
+        let py = min(max(0, Int(point.y)), h - 1)
+        let idx = py * bytesPerRow + px * 4
+        // premultipliedFirst + byteOrder32Little: [BGRA]
+        let a = CGFloat(dataPtr[idx + 3]) / 255.0
+        if a > 0.3 {
+            totalB += CGFloat(dataPtr[idx]) / 255.0
+            totalG += CGFloat(dataPtr[idx + 1]) / 255.0
+            totalR += CGFloat(dataPtr[idx + 2]) / 255.0
+            count += 1
         }
     }
 
-    guard let newCtx = CGContext(
-        data: &pixels,
+    if count > 0 {
+        let r = totalR / count
+        let g = totalG / count
+        let b = totalB / count
+        return CGColor(colorSpace: CGColorSpaceCreateDeviceRGB(), components: [r, g, b, 1.0])
+            ?? CGColor(red: 1, green: 1, blue: 1, alpha: 1)
+    }
+
+    return CGColor(red: 1, green: 1, blue: 1, alpha: 1)
+}
+
+/// 将图像中的透明像素填充为指定颜色，生成不透明图像。
+/// 用于兼容不支持 alpha 通道的应用（如微信预览），避免圆角外出现白色/黑色背景。
+func fillTransparentPixels(in image: CGImage, with fillColor: CGColor) -> CGImage? {
+    let width = image.width
+    let height = image.height
+    let rect = CGRect(x: 0, y: 0, width: width, height: height)
+
+    // 使用不透明上下文（noneSkipFirst，无 alpha 通道）
+    guard let ctx = CGContext(
+        data: nil,
         width: width,
         height: height,
         bitsPerComponent: 8,
-        bytesPerRow: bytesPerRow,
-        space: space,
-        bitmapInfo: bitmapInfo
+        bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
     ) else { return nil }
 
-    return newCtx.makeImage()
+    // 先填充背景色
+    ctx.setFillColor(fillColor)
+    ctx.fill(rect)
+
+    // 再绘制原图（透明像素不会覆盖填充色）
+    ctx.draw(image, in: rect)
+
+    return ctx.makeImage()
 }
 
 /// 将 `maskImage` 的 alpha 通道作为透明度蒙版应用到 `image` 上。
@@ -171,6 +175,25 @@ func applyAlphaMask(from maskImage: CGImage, to image: CGImage) -> CGImage? {
     ctx.draw(maskImage, in: rect)
     return ctx.makeImage()
 }
+
+/// 笔触工具（铅笔/荧光笔/模糊/马赛克）的自定义圆圈光标。
+/// 空心圆圈 + 双色边框（外黑内白），确保在深色/浅色背景上均可见。
+/// 圆圈中心为笔尖热点，不表示笔触大小，避免误导用户。
+let brushCursor: NSCursor = {
+    let size = 15
+    let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+        NSColor.black.setStroke()
+        let outer = NSBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5))
+        outer.lineWidth = 1
+        outer.stroke()
+        NSColor.white.setStroke()
+        let inner = NSBezierPath(ovalIn: rect.insetBy(dx: 1.5, dy: 1.5))
+        inner.lineWidth = 1
+        inner.stroke()
+        return true
+    }
+    return NSCursor(image: image, hotSpot: NSPoint(x: CGFloat(size) / 2, y: CGFloat(size) / 2))
+}()
 
 /// 自定义遮罩窗口，重写使其可成为 Key/Main 窗口以接收键盘/鼠标事件 (P3)
 class CaptureOverlayWindow: NSPanel {
@@ -260,6 +283,12 @@ class TrackingNSView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { return true }
     override var isFlipped: Bool { return true }
     override var mouseDownCanMoveWindow: Bool { return false }
+
+    // 主菜单 Undo/Redo 项通过 responder chain 分发 undo:/redo: 选择器。
+    // NSResponder 默认实现调用 undoManager?.undo()，但本应用未使用 NSUndoManager，
+    // 会导致 Cmd+Z 被菜单项拦截后无操作。此处重写为转发到自定义回调。
+    @objc func undo(_ sender: Any?) { onUndo?() }
+    @objc func redo(_ sender: Any?) { onRedo?() }
     
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -291,7 +320,7 @@ class TrackingNSView: NSView {
         super.resetCursorRects()
         let isBrush = activeTool == .pencil || activeTool == .highlighter || activeTool == .blur || activeTool == .mosaic
         if isBrush {
-            self.addCursorRect(self.bounds, cursor: NSCursor.transparent)
+            self.addCursorRect(self.bounds, cursor: brushCursor)
         } else {
             self.addCursorRect(self.bounds, cursor: NSCursor.crosshair)
         }
@@ -310,7 +339,7 @@ class TrackingNSView: NSView {
         let modifierFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let isCmd = modifierFlags.contains(.command)
         let isShift = modifierFlags.contains(.shift)
-        
+
         if event.keyCode == 51 || event.keyCode == 117 {
             onDelete?()
             return
@@ -720,6 +749,8 @@ struct OverlayRootView: View {
                         }
                     },
                     onHover: { pt in
+                        // 文本编辑态时让 NSTextView 自行管理光标，避免干扰输入法
+                        if editModel.editingTextId != nil || editModel.editingCounterId != nil { return }
                         if sessionState == .editing {
                             if let rect = finalRect, rect.contains(pt) {
                                 editModel.hoverPoint = pt
@@ -734,7 +765,7 @@ struct OverlayRootView: View {
                             editModel.isHoveringCanvas = true
                             handleHover(pt)
                             if editModel.selectedTool == .pencil || editModel.selectedTool == .highlighter || editModel.selectedTool == .blur || editModel.selectedTool == .mosaic {
-                                NSCursor.transparent.set()
+                                brushCursor.set()
                             } else {
                                 NSCursor.crosshair.set()
                             }
@@ -742,7 +773,9 @@ struct OverlayRootView: View {
                     },
                     onHoverExited: {
                         editModel.isHoveringCanvas = false
-                        NSCursor.arrow.set()
+                        if editModel.editingTextId == nil && editModel.editingCounterId == nil {
+                            NSCursor.arrow.set()
+                        }
                     },
                     activeTool: editModel.selectedTool,
                     onUndo: editModel.undo,
@@ -817,24 +850,13 @@ struct OverlayRootView: View {
                 // 8. PSD-style 圆形画笔光标
                 let isBrush = editModel.selectedTool == .pencil || editModel.selectedTool == .highlighter || editModel.selectedTool == .blur || editModel.selectedTool == .mosaic
                 if editModel.isHoveringCanvas && isBrush {
-                    let brushSize: CGFloat = {
-                        if editModel.selectedTool == .pencil {
-                            return editModel.selectedLineWidth
-                        } else {
-                            return editModel.selectedBrushSize
-                        }
-                    }()
-                    ZStack {
-                        Circle()
-                            .fill(Color.white.opacity(0.15))
-                        Circle()
-                            .stroke(Color.black, lineWidth: 1.5)
-                        Circle()
-                            .stroke(Color.white, lineWidth: 0.8)
-                    }
-                    .frame(width: brushSize, height: brushSize)
+                    BrushCursorView(
+                        selectedTool: editModel.selectedTool,
+                        selectedLineWidth: editModel.selectedLineWidth,
+                        selectedBrushSize: editModel.selectedBrushSize,
+                        scale: 1.0
+                    )
                     .position(x: editModel.hoverPoint.x, y: editModel.hoverPoint.y)
-                    .allowsHitTesting(false)
                 }
             }
         }
@@ -887,10 +909,12 @@ struct OverlayRootView: View {
 
 
     private func handleHover(_ point: CGPoint) {
+        // 文本编辑态时让 NSTextView 自行管理 I-beam 光标，避免强制设置光标干扰输入法
+        if editModel.editingTextId != nil || editModel.editingCounterId != nil { return }
         if sessionState == .editing {
             let isBrush = editModel.selectedTool == .pencil || editModel.selectedTool == .highlighter || editModel.selectedTool == .blur || editModel.selectedTool == .mosaic
             if isBrush && finalRect?.contains(point) == true {
-                NSCursor.transparent.set()
+                brushCursor.set()
             } else {
                 NSCursor.crosshair.set()
             }
@@ -1196,14 +1220,32 @@ struct OverlayRootView: View {
         // 使用与保存文件一致的 CGImageDestination 生成 PNG，确保 alpha 通道不被丢弃
         var pngDataForClipboard: Data? = nil
         if copyImage {
-            pngDataForClipboard = CaptureEngine.shared.pngData(from: cleanCropped)
+            // 窗口截图：填充透明圆角区域为边缘采样色，兼容不支持 alpha 预览的应用（如微信）
+            let clipboardImage: CGImage
+            if isWindowSnap {
+                let edgeColor = sampleEdgeColor(from: cleanCropped)
+                clipboardImage = fillTransparentPixels(in: cleanCropped, with: edgeColor) ?? cleanCropped
+            } else {
+                clipboardImage = cleanCropped
+            }
+            pngDataForClipboard = CaptureEngine.shared.pngData(from: clipboardImage)
             if let pngData = pngDataForClipboard {
                 pbItem.setData(pngData, forType: .png)
             }
         }
 
         if copyCoords && !aiMarkers.isEmpty {
-            textOutput = LanguageManager.shared.localizedString(forKey: "以下是在原图上圈出的目标元素坐标 [xmin, ymin, xmax, ymax]，请逐一根据坐标和关联的要求修改：") + "\n"
+            // 优先使用用户自定义话术，为空（含纯空白）则回退到 i18n 默认话术
+            let saved = (UserDefaults.standard.string(forKey: UserDefaultsKey.aiMarkerCoordsTemplate) ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let rawTemplate = saved.isEmpty
+                ? LanguageManager.shared.localizedString(forKey: "aiMarker.coordsTemplate")
+                : saved
+            // 替换原图尺寸占位符（多模态 AI 需要原图尺寸来正确换算坐标空间）
+            let template = rawTemplate
+                .replacingOccurrences(of: "{width}", with: "\(cleanCropped.width)")
+                .replacingOccurrences(of: "{height}", with: "\(cleanCropped.height)")
+            textOutput = template + "\n"
             for marker in aiMarkers.sorted(by: { ($0.counterValue ?? 0) < ($1.counterValue ?? 0) }) {
                 let idStr = marker.displayCounterString
                 let r = marker.rect
@@ -1295,6 +1337,11 @@ struct OverlayRootView: View {
         // 窗口截图：对最终渲染结果应用硬圆角遮罩，确保拖拽出的文件圆角无白边
         if isWindowSnap {
             finalCropped = applyWindowCornerMask(to: finalCropped, cornerRadius: windowCornerRadius, inset: 1.0) ?? finalCropped
+            // 填充透明圆角区域为边缘采样色，兼容不支持 alpha 预览的应用（如微信）
+            let edgeColor = sampleEdgeColor(from: finalCropped)
+            if let filled = fillTransparentPixels(in: finalCropped, with: edgeColor) {
+                finalCropped = filled
+            }
         }
         
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("Screenshot_\(UUID().uuidString).png")

@@ -8,6 +8,24 @@ public struct PreferencesView: View {
     @State private var showConflictToast = false
     @ObservedObject var languageManager = LanguageManager.shared
     @State private var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled
+    /// AI 定位复制坐标话术：存储用户自定义值，空字符串表示回退到 i18n 默认
+    @AppStorage(UserDefaultsKey.aiMarkerCoordsTemplate) private var coordsTemplateRaw: String = ""
+    
+    /// 对外暴露的话术：raw 为空时回退到当前语言的本地化默认值
+    private var coordsTemplate: Binding<String> {
+        Binding(
+            get: {
+                coordsTemplateRaw.isEmpty
+                    ? LanguageManager.shared.localizedString(forKey: "aiMarker.coordsTemplate")
+                    : coordsTemplateRaw
+            },
+            set: { newValue in
+                // 纯空白视为空，回退到 i18n 默认话术
+                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                coordsTemplateRaw = trimmed
+            }
+        )
+    }
     
     public init() {
         let code = HotkeyManager.shared.currentKeyCode
@@ -27,33 +45,20 @@ public struct PreferencesView: View {
     }
     
     public var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            Text(LanguageManager.shared.localizedString(forKey: "偏好设置"))
-                .font(.title)
-                .fontWeight(.bold)
-            
-            VStack(alignment: .leading, spacing: 12) {
-                Text(LanguageManager.shared.localizedString(forKey: "全局快捷键"))
-                    .font(.headline)
-                
+        Form {
+            // MARK: - 全局快捷键
+            Section {
                 HStack {
                     Text(LanguageManager.shared.localizedString(forKey: "截图快捷键:"))
-                    
-                    Button(action: {
-                        isRecording = true
-                    }) {
-                        Text(isRecording ? LanguageManager.shared.localizedString(forKey: "请按下新快捷键...") : recordedShortcut)
+                    Spacer()
+                    Button(action: { isRecording = true }) {
+                        Text(isRecording
+                             ? LanguageManager.shared.localizedString(forKey: "请按下新快捷键...")
+                             : recordedShortcut)
                             .frame(minWidth: 150)
-                            .padding(.vertical, 4)
-                            .padding(.horizontal, 8)
-                            .background(isRecording ? Color.blue.opacity(0.2) : Color.gray.opacity(0.2))
-                            .cornerRadius(6)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(isRecording ? Color.blue : Color.gray.opacity(0.5), lineWidth: 1)
-                            )
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .buttonStyle(.bordered)
+                    .tint(isRecording ? .red : .accentColor)
                     .background(
                         ShortcutRecorder(isRecording: $isRecording, currentShortcut: $recordedShortcut, onConflict: {
                             showConflictToast = true
@@ -64,29 +69,23 @@ public struct PreferencesView: View {
                         .frame(width: 0, height: 0)
                     )
                 }
-                
+            } header: {
+                Text(LanguageManager.shared.localizedString(forKey: "全局快捷键"))
+            } footer: {
                 if showConflictToast {
                     Text(LanguageManager.shared.localizedString(forKey: "快捷键冲突或无效，请尝试其他组合。"))
-                        .font(.caption)
                         .foregroundColor(.red)
-                        .transition(.opacity)
                 } else {
-                    Text(LanguageManager.shared.localizedString(forKey: "点击上方按钮后直接按下组合键即可设置。"))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Text(LanguageManager.shared.localizedString(forKey: "注意：部分快捷键（如 Cmd+Space）被 macOS 系统全局保留，录制时若无反应请更换组合。"))
-                        .font(.caption)
-                        .foregroundColor(.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(LanguageManager.shared.localizedString(forKey: "点击上方按钮后直接按下组合键即可设置。"))
+                        Text(LanguageManager.shared.localizedString(forKey: "注意：部分快捷键（如 Cmd+Space）被 macOS 系统全局保留，录制时若无反应请更换组合。"))
+                            .foregroundColor(.orange)
+                    }
                 }
             }
             
-            Divider()
-            
-            VStack(alignment: .leading, spacing: 12) {
-                Text(LanguageManager.shared.localizedString(forKey: "常规设置"))
-                    .font(.headline)
-                
+            // MARK: - 常规设置
+            Section {
                 Toggle(LanguageManager.shared.localizedString(forKey: "开机自动启动"), isOn: Binding(
                     get: { launchAtLogin },
                     set: { newValue in
@@ -102,35 +101,51 @@ public struct PreferencesView: View {
                         }
                     }
                 ))
+            } header: {
+                Text(LanguageManager.shared.localizedString(forKey: "常规设置"))
             }
             
-            Divider()
-            
-            VStack(alignment: .leading, spacing: 12) {
-                Text(LanguageManager.shared.localizedString(forKey: "多语言支持"))
-                    .font(.headline)
+            // MARK: - AI 定位话术
+            Section {
+                TextEditor(text: coordsTemplate)
+                    .frame(minHeight: 64, idealHeight: 80)
+                    .font(.body)
+                    .scrollContentBackground(.hidden)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+                    )
                 
                 HStack {
-                    Text(LanguageManager.shared.localizedString(forKey: "显示语言:"))
-                    
-                    Picker("", selection: $languageManager.selectedLanguage) {
-                        ForEach(AppLanguage.allCases) { lang in
-                            Text(lang.displayName).tag(lang)
-                        }
+                    Spacer()
+                    Button(action: { coordsTemplateRaw = "" }) {
+                        Text(LanguageManager.shared.localizedString(forKey: "恢复默认"))
                     }
-                    .pickerStyle(MenuPickerStyle())
-                    .frame(width: 150)
+                    .buttonStyle(.bordered)
+                    .disabled(coordsTemplateRaw.isEmpty)
                 }
-                
-                Text(LanguageManager.shared.localizedString(forKey: "TraceMark 默认跟随您的 macOS 系统语言。支持实时切换多种语言。"))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+            } header: {
+                Text(LanguageManager.shared.localizedString(forKey: "aiMarker.coordsTemplateSettingTitle"))
+            } footer: {
+                Text(LanguageManager.shared.localizedString(forKey: "aiMarker.coordsTemplateSettingDesc"))
             }
             
-            Spacer()
+            // MARK: - 多语言
+            Section {
+                Picker(LanguageManager.shared.localizedString(forKey: "显示语言:"), selection: $languageManager.selectedLanguage) {
+                    ForEach(AppLanguage.allCases) { lang in
+                        Text(lang.displayName).tag(lang)
+                    }
+                }
+                .pickerStyle(.menu)
+            } header: {
+                Text(LanguageManager.shared.localizedString(forKey: "多语言支持"))
+            } footer: {
+                Text(LanguageManager.shared.localizedString(forKey: "TraceMark 默认跟随您的 macOS 系统语言。支持实时切换多种语言。"))
+            }
         }
-        .padding(30)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .formStyle(.grouped)
     }
 }
 
