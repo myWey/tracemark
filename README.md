@@ -8,8 +8,8 @@ TraceMark is an efficient, lightweight, system-level screenshot and annotation t
 
 ### 1. More Elegant Annotation
 
-- **💬 Numbered Text (Callouts)**: Auto-incrementing numbers with draggable callout text boxes make step-by-step instructions clear, readable, and perfect for design reviews and product feedback.
-- **📝 Rectangle Frame Text**: Bordered, transparent-fill text callouts frame and explain specific areas without cluttering the screenshot.
+- **💬 Step Text (Callouts)**: Auto-incrementing numbers with draggable callout text boxes make step-by-step instructions clear, readable, and perfect for design reviews and product feedback.
+- **📝 Box Text**: Bordered, transparent-fill text callouts frame and explain specific areas without cluttering the screenshot.
 - **🪟 Window Auto-Snap**: Automatically detects window boundaries when capturing, filtering out excess background edges for cleaner output.
 - **🎨 Refined Color System**: Built on macOS semantic colors with a unified purple AI accent, keeping both the UI and exported screenshots professionally polished.
 
