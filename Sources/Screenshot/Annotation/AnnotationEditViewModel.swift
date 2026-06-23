@@ -79,11 +79,13 @@ final class AnnotationEditViewModel: ObservableObject {
     // MARK: - 工具状态
 
     @Published var selectedTool: AnnotationToolType
-    @Published var selectedColor: Color = TMDesign.Colors.red
+    @Published var selectedColor: Color = AnnotationEditViewModel.loadSavedColor() {
+        didSet { AnnotationEditViewModel.saveColor(selectedColor) }
+    }
     @Published var selectedFontSize: CGFloat = 16.0
     @Published var selectedLineWidth: CGFloat = 4.0
     @Published var selectedBrushSize: CGFloat = 24.0
-    @Published var selectedTextStyle: TextStyle = .standard
+    @Published var selectedTextStyle: TextStyle = .roundedBoxed
 
     // MARK: - 标注选中与调整状态
 
@@ -129,6 +131,25 @@ final class AnnotationEditViewModel: ObservableObject {
         self.behavior = behavior
         self.selectedTool = selectedTool
         self.hoverPoint = hoverPoint
+    }
+
+    // MARK: - 颜色记忆
+
+    /// 从 UserDefaults 加载上次选中的标注颜色，无记录时默认红色。
+    /// 满足两类用户：新用户默认红色（符合大多数习惯），改过颜色的用户记住偏好。
+    private static func loadSavedColor() -> Color {
+        guard let data = UserDefaults.standard.data(forKey: UserDefaultsKey.selectedAnnotationColor),
+              let codable = try? JSONDecoder().decode(CodableColor.self, from: data) else {
+            return TMDesign.Colors.red
+        }
+        return codable.color
+    }
+
+    private static func saveColor(_ color: Color) {
+        let codable = color.toCodable()
+        if let data = try? JSONEncoder().encode(codable) {
+            UserDefaults.standard.set(data, forKey: UserDefaultsKey.selectedAnnotationColor)
+        }
     }
 
     // MARK: - 撤销/重做方法
@@ -360,7 +381,9 @@ final class AnnotationEditViewModel: ObservableObject {
                     let item = annotations[idx]
                     let fontSize = item.fontSize ?? 16.0
                     let singleLineHeight = fontSize * 1.2 + 16
-                    if item.type != .rectText, item.customWidth == nil,
+                    // 所有文本类型：多行或高度超出单行时锁定 customWidth，保留换行宽度，
+                    // 避免非编辑态 fixedSize(horizontal: true) 将多行文本拉回一行溢出选区。
+                    if item.customWidth == nil,
                        (item.text ?? "").contains("\n") || item.rect.height > singleLineHeight + 4 {
                         annotations[idx].customWidth = item.rect.width
                     }

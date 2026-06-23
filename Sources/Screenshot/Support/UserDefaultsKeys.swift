@@ -13,4 +13,6 @@ enum UserDefaultsKey {
     static let appLanguageSelection = "AppLanguageSelection"
     // AI 定位复制坐标话术（为空时使用 i18n 默认话术）
     static let aiMarkerCoordsTemplate = "AiMarkerCoordsTemplate"
+    // 标注颜色记忆（用户选色后作为后续默认色）
+    static let selectedAnnotationColor = "SelectedAnnotationColor"
 }

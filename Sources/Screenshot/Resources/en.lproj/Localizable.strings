@@ -16,9 +16,9 @@
 "直线" = "Line";
 "箭头" = "Arrow";
 "文字" = "Text";
-"序号文字" = "Numbered Text";
-"矩形框文本" = "Rectangle Text";
-"计数器" = "Counter";
+"步骤文字" = "Step Text";
+"框选文字" = "Box Text";
+"序号" = "Number";
 "画笔" = "Pencil";
 "荧光笔" = "Highlighter";
 "模糊" = "Blur";
@@ -30,7 +30,7 @@
 "区域截图" = "Area Screenshot";
 "关闭所有贴图" = "Close All Pins";
 "退出" = "Quit";
-"已保存并复制原图和AI 定位坐标" = "Saved and copied original image with AI coordinates";
+"已保存并复制原图和 AI 改图定位坐标" = "Saved and copied original image with AI edit coordinates";
 "历史标注再编辑" = "Image Editing";
 "标注与编辑" = "Annotation & Edit";
 "今天" = "Today";
@@ -62,17 +62,19 @@
 "复制原图" = "Copy Original";
 "复制坐标" = "Copy Coordinates";
 "已复制原图" = "Original image copied";
+"已保存并复制 AI 改图定位坐标" = "Saved and copied AI edit coordinates";
 "已复制坐标" = "Coordinates copied";
 "撤销 (Cmd+Z)" = "Undo (Cmd+Z)";
 "重做 (Cmd+Shift+Z)" = "Redo (Cmd+Shift+Z)";
 "删除选中标注 (Delete)" = "Delete Selected (Delete)";
 "取消 (Esc)" = "Cancel (Esc)";
 "完成并保存" = "Save & Exit";
-"给 AI 定位" = "AI Positioning";
-"请先添加 AI 定位标记" = "Please add AI positioning markers first";
+"AI 改图定位" = "AI Edit Location";
+"AI 改图" = "AI Edit";
+"请先添加 AI 改图定位标记" = "Please add AI edit location markers first";
 "aiMarker.coordsTemplate" = "The following are coordinates of regions of interest on the original image (numbered in order). Coordinate system: origin (0,0) at top-left, x rightward, y downward. [xmin, ymin, xmax, ymax] in absolute pixels (NOT normalized). Original image: {width}×{height} pixels. Please locate each region by combining coordinates with image content, then modify according to subsequent instructions:";
-"aiMarker.coordsTemplateSettingTitle" = "AI Positioning Copy Template";
-"aiMarker.coordsTemplateSettingDesc" = "Customize the template for 'AI Positioning - Copy Coordinates'. Placeholders: {width}, {height} (original image pixel dimensions). [xmin, ymin, xmax, ymax] is the coordinate format description, recommended to keep.";
+"aiMarker.coordsTemplateSettingTitle" = "AI Edit Location Copy Template";
+"aiMarker.coordsTemplateSettingDesc" = "Customize the template for 'AI Edit Location - Copy Coordinates'. Placeholders: {width}, {height} (original image pixel dimensions). [xmin, ymin, xmax, ymax] is the coordinate format description, recommended to keep.";
 "恢复默认" = "Reset to Default";
 
 "OCR_Recognized_Text" = "Recognized Text";

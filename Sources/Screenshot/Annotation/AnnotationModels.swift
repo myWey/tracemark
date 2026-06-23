@@ -34,15 +34,15 @@ public enum AnnotationToolType: String, CaseIterable, Codable {
     case line = "直线"
     case arrow = "箭头"
     case text = "文字"
-    case numberedText = "序号文字"
-    case rectText = "矩形框文本"
-    case counter = "计数器"
+    case numberedText = "步骤文字"
+    case rectText = "框选文字"
+    case counter = "序号"
     case pencil = "画笔"
     case highlighter = "荧光笔"
     case blur = "模糊"
     case mosaic = "马赛克"
     case spotlight = "聚焦"
-    case aiMarker = "给 AI 定位"
+    case aiMarker = "AI 改图定位"
     
     public var isFreehandTool: Bool {
         return self == .pencil || self == .highlighter || self == .blur || self == .mosaic
@@ -78,7 +78,7 @@ public struct AnnotationItem: Identifiable, Codable, Equatable {
     public var fontStyle: TextStyle?
     public var fontSize: CGFloat?
     
-    // 计数器数据
+    // 序号数据
     public var counterValue: Int?
     public var customCounterString: String?
     

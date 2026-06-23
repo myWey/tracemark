@@ -16,9 +16,9 @@
 "直线" = "直線";
 "箭头" = "箭頭";
 "文字" = "文字";
-"序号文字" = "序號文字";
-"矩形框文本" = "矩形框文字";
-"计数器" = "計數器";
+"步骤文字" = "步驟文字";
+"框选文字" = "框選文字";
+"序号" = "序號";
 "画笔" = "畫筆";
 "荧光笔" = "螢光筆";
 "模糊" = "模糊";
@@ -49,16 +49,19 @@
 "复制原图" = "複製原圖";
 "复制坐标" = "複製座標";
 "已复制原图" = "已複製原圖";
+"已保存并复制 AI 改图定位坐标" = "已儲存並複製 AI 改圖定位座標";
 "已复制坐标" = "已複製座標";
 "撤销 (Cmd+Z)" = "復原 (Cmd+Z)";
 "重做 (Cmd+Shift+Z)" = "重做 (Cmd+Shift+Z)";
 "删除选中标注 (Delete)" = "刪除選中標註 (Delete)";
 "取消 (Esc)" = "取消 (Esc)";
 "完成并保存" = "完成並儲存";
-"给 AI 定位" = "給 AI 定位";
+"AI 改图定位" = "AI 改圖定位";
+"AI 改图" = "AI 改圖";
+"请先添加 AI 改图定位标记" = "請先添加 AI 改圖定位標記";
 "aiMarker.coordsTemplate" = "以下是原圖上需關注區域的座標（按順序編號）。座標系：左上角原點(0,0)，x向右，y向下。[xmin, ymin, xmax, ymax] 為絕對像素（非歸一化），原圖 {width}×{height} 像素。請結合座標和圖像內容定位各區域，並按後續指令修改：";
-"aiMarker.coordsTemplateSettingTitle" = "AI 定位複製話術";
-"aiMarker.coordsTemplateSettingDesc" = "自訂「給 AI 定位 - 複製座標」輸出的話術。可用佔位符：{width}、{height}（原圖像素尺寸）。[xmin, ymin, xmax, ymax] 為座標格式說明，建議保留。";
+"aiMarker.coordsTemplateSettingTitle" = "AI 改圖定位複製話術";
+"aiMarker.coordsTemplateSettingDesc" = "自訂「AI 改圖定位 - 複製座標」輸出的話術。可用佔位符：{width}、{height}（原圖像素尺寸）。[xmin, ymin, xmax, ymax] 為座標格式說明，建議保留。";
 "恢复默认" = "恢復預設";
 
 "OCR_Recognized_Text" = "識別文字";

@@ -512,7 +512,7 @@ public struct AnnotationRootView: View {
 
         withAnimation(.spring()) {
             if copyCoords {
-                toastMessage = LanguageManager.shared.localizedString(forKey: "已保存并复制 AI 定位坐标")
+                toastMessage = LanguageManager.shared.localizedString(forKey: "已保存并复制 AI 改图定位坐标")
             } else {
                 toastMessage = LanguageManager.shared.localizedString(forKey: "已保存并复制原图")
             }
@@ -1282,7 +1282,7 @@ struct AnnotationShapeView: View {
                 let finalMaxWidth = item.customWidth ?? max(50, limitWidth)
                 
                 ZStack(alignment: .topLeading) {
-                    // 矩形框文本：拖拽过程中只画矩形框，等 calloutOffset 设置完成后再显示文本框与引线
+                    // 框选文字：拖拽过程中只画矩形框，等 calloutOffset 设置完成后再显示文本框与引线
                     if item.type == .rectText, let rectBounds = rectTextBounds(item), rectBounds.width > 1, rectBounds.height > 1 {
                         let rectLineWidth = max(2, fontSize * 0.15)
 

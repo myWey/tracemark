@@ -276,7 +276,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         if action == .copyToAI {
             DispatchQueue.main.async {
-                ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: "已保存并复制原图和AI 定位坐标"))
+                ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: "已保存并复制原图和 AI 改图定位坐标"))
             }
             AppLogger.app.info("✅ [AppDelegate] AI 原图与坐标已由来源视图处理并复制")
             

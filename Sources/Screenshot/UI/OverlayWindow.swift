@@ -1275,11 +1275,11 @@ struct OverlayRootView: View {
         // Toast 反馈
         let toastKey: String
         if copyImage && copyCoords {
-            toastKey = "已保存并复制原图和AI 定位坐标"
+            toastKey = "已保存并复制原图和 AI 改图定位坐标"
         } else if copyImage {
             toastKey = "已保存并复制原图"
         } else {
-            toastKey = "已保存并复制 AI 定位坐标"
+            toastKey = "已保存并复制 AI 改图定位坐标"
         }
         ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: toastKey))
         AppLogger.ui.debug("📋 [OverlayView] AI 导出完成: image=\(copyImage), coords=\(copyCoords)")
@@ -1472,7 +1472,7 @@ struct UnifiedToolbarView: View {
                 
                 Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 1, height: 16).padding(.horizontal, 2)
                 
-                // 4. AI 组：给 AI 定位按钮 + 导出下拉菜单（视觉强关联）
+                // 4. AI 组：AI 改图定位按钮 + 导出下拉菜单（视觉强关联）
                 HStack(spacing: 6) {
                     GroupButton(tool: .aiMarker, selected: $selectedTool)
                     
@@ -1628,7 +1628,7 @@ struct UnifiedToolbarView: View {
             }
         }
         .onChange(of: selectedTool) { newTool in
-            if newTool == .numberedText || newTool == .rectText {
+            if newTool == .text || newTool == .numberedText || newTool == .rectText {
                 selectedTextStyle = .roundedBoxed
             }
         }
@@ -1677,15 +1677,15 @@ struct GroupButton: View {
         case .line: return "直线"
         case .arrow: return "箭头"
         case .text: return "文字"
-        case .numberedText: return "序号文字"
-        case .rectText: return "矩形框文本"
-        case .counter: return "计数器"
+        case .numberedText: return "步骤文字"
+        case .rectText: return "框选文字"
+        case .counter: return "序号"
         case .pencil: return "画笔"
         case .highlighter: return "荧光笔"
         case .blur: return "模糊"
         case .mosaic: return "马赛克"
         case .spotlight: return "聚焦"
-        case .aiMarker: return "给 AI 定位"
+        case .aiMarker: return "AI 改图定位"
         }
     }
     
@@ -1915,6 +1915,7 @@ struct ExportDropdownButton: View {
     var aiMarkerCount: Int = 0
 
     @State private var isShowingPopover = false
+    @State private var isHovered = false
 
     var body: some View {
         Button(action: {
@@ -1951,6 +1952,28 @@ struct ExportDropdownButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .onHover { hover in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hover
+            }
+        }
+        .overlay(
+            Group {
+                if isHovered && !isShowingPopover {
+                    Text(LanguageManager.shared.localizedString(forKey: "AI 改图"))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.black.opacity(0.75))
+                        .cornerRadius(4)
+                        .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
+                        .fixedSize()
+                        .offset(y: -28)
+                        .allowsHitTesting(false)
+                }
+            }
+        )
         .popover(isPresented: $isShowingPopover, arrowEdge: .top) {
             VStack(alignment: .leading, spacing: 0) {
                 Button(action: {
@@ -1971,7 +1994,7 @@ struct ExportDropdownButton: View {
                         onExportCoords?()
                         isShowingPopover = false
                     } else {
-                        ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: "请先添加 AI 定位标记"))
+                        ToastManager.shared.showToast(message: LanguageManager.shared.localizedString(forKey: "请先添加 AI 改图定位标记"))
                     }
                 }) {
                     Label(LanguageManager.shared.localizedString(forKey: "复制坐标"), systemImage: "doc.on.doc")
