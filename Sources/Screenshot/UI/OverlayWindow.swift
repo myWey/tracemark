@@ -1960,7 +1960,7 @@ struct ExportDropdownButton: View {
         .overlay(
             Group {
                 if isHovered && !isShowingPopover {
-                    Text(LanguageManager.shared.localizedString(forKey: "AI 改图"))
+                    Text(LanguageManager.shared.localizedString(forKey: "导出原图与坐标"))
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.white)
                         .padding(.horizontal, 6)

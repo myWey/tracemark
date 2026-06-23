@@ -135,20 +135,22 @@ final class AnnotationEditViewModel: ObservableObject {
 
     // MARK: - 颜色记忆
 
-    /// 从 UserDefaults 加载上次选中的标注颜色，无记录时默认红色。
-    /// 满足两类用户：新用户默认红色（符合大多数习惯），改过颜色的用户记住偏好。
+    /// 从 UserDefaults 加载上次选中的标注颜色索引，无记录时默认红色（索引 0）。
+    /// 使用索引而非颜色数据，确保加载的颜色与调色板引用完全相同的 Color 实例，
+    /// 避免 NSColor 序列化浮点精度差异导致选中态比较失败。
     private static func loadSavedColor() -> Color {
-        guard let data = UserDefaults.standard.data(forKey: UserDefaultsKey.selectedAnnotationColor),
-              let codable = try? JSONDecoder().decode(CodableColor.self, from: data) else {
-            return TMDesign.Colors.red
+        let palette = TMDesign.Colors.toolbarPalette
+        let index = UserDefaults.standard.integer(forKey: UserDefaultsKey.selectedAnnotationColor)
+        if index >= 0 && index < palette.count {
+            return palette[index]
         }
-        return codable.color
+        return palette[0]
     }
 
     private static func saveColor(_ color: Color) {
-        let codable = color.toCodable()
-        if let data = try? JSONEncoder().encode(codable) {
-            UserDefaults.standard.set(data, forKey: UserDefaultsKey.selectedAnnotationColor)
+        let palette = TMDesign.Colors.toolbarPalette
+        if let index = palette.firstIndex(where: { $0 == color }) {
+            UserDefaults.standard.set(index, forKey: UserDefaultsKey.selectedAnnotationColor)
         }
     }
 

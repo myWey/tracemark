@@ -68,7 +68,7 @@
 "取消 (Esc)" = "取消 (Esc)";
 "完成并保存" = "完成并保存";
 "AI 改图定位" = "AI 改图定位";
-"AI 改图" = "AI 改图";
+"导出原图与坐标" = "导出原图与坐标";
 "请先添加 AI 改图定位标记" = "请先添加 AI 改图定位标记";
 "aiMarker.coordsTemplate" = "以下是原图上需关注区域的坐标（按顺序编号）。坐标系：左上角原点(0,0)，x向右，y向下。[xmin, ymin, xmax, ymax] 为绝对像素（非归一化），原图 {width}×{height} 像素。请结合坐标和图像内容定位各区域，并按后续指令修改：";
 "aiMarker.coordsTemplateSettingTitle" = "AI 定位复制话术";

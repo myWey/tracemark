@@ -57,7 +57,7 @@
 "取消 (Esc)" = "取消 (Esc)";
 "完成并保存" = "完成並儲存";
 "AI 改图定位" = "AI 改圖定位";
-"AI 改图" = "AI 改圖";
+"导出原图与坐标" = "匯出原圖與座標";
 "请先添加 AI 改图定位标记" = "請先添加 AI 改圖定位標記";
 "aiMarker.coordsTemplate" = "以下是原圖上需關注區域的座標（按順序編號）。座標系：左上角原點(0,0)，x向右，y向下。[xmin, ymin, xmax, ymax] 為絕對像素（非歸一化），原圖 {width}×{height} 像素。請結合座標和圖像內容定位各區域，並按後續指令修改：";
 "aiMarker.coordsTemplateSettingTitle" = "AI 改圖定位複製話術";

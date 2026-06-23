@@ -70,7 +70,7 @@
 "取消 (Esc)" = "Cancel (Esc)";
 "完成并保存" = "Save & Exit";
 "AI 改图定位" = "AI Edit Location";
-"AI 改图" = "AI Edit";
+"导出原图与坐标" = "Export Original & Coordinates";
 "请先添加 AI 改图定位标记" = "Please add AI edit location markers first";
 "aiMarker.coordsTemplate" = "The following are coordinates of regions of interest on the original image (numbered in order). Coordinate system: origin (0,0) at top-left, x rightward, y downward. [xmin, ymin, xmax, ymax] in absolute pixels (NOT normalized). Original image: {width}×{height} pixels. Please locate each region by combining coordinates with image content, then modify according to subsequent instructions:";
 "aiMarker.coordsTemplateSettingTitle" = "AI Edit Location Copy Template";
